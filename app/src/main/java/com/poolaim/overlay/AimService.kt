@@ -49,17 +49,22 @@ class AimService : Service() {
         val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val mode = smallButton("▶")
         val settings = smallButton("⚙")
-        val close = smallButton("×")
+        val close = smallButton("×").apply {
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(115, 35, 42))
+        }
         val move = TextView(this).apply {
             text = "⠿"
-            textSize = 20f
+            textSize = 24f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            setPadding(dp(8), 0, dp(8), 0)
+            setPadding(dp(13), 0, dp(13), 0)
         }
         header.addView(move)
         header.addView(mode)
         header.addView(settings)
+        val closeGap = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(24), dp(1)) }
+        header.addView(closeGap)
         header.addView(close)
         panel.addView(header)
 
@@ -112,7 +117,7 @@ class AimService : Service() {
                 sizeLabel.text = "Размер шаров: $amount%"
                 aim.ballScale = amount / 100f
                 prefs.edit().putInt("ball_size", amount).apply()
-                aim.invalidate()
+                aim.onBallSizeChanged()
             })
         }
         options.addView(textLabel("Две зелёные точки: углы рамки"))
@@ -216,10 +221,10 @@ class AimService : Service() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).roundToInt()
     private fun smallButton(label: String) = Button(this).apply {
         text = label
-        textSize = 13f
-        minWidth = 0; minimumWidth = 0; minHeight = 0; minimumHeight = 0
-        setPadding(dp(5), 0, dp(5), 0)
-        layoutParams = LinearLayout.LayoutParams(-2, dp(39))
+        textSize = 17f
+        minWidth = dp(49); minimumWidth = dp(49); minHeight = dp(48); minimumHeight = dp(48)
+        setPadding(dp(8), 0, dp(8), 0)
+        layoutParams = LinearLayout.LayoutParams(-2, dp(48))
     }
     private fun textLabel(value: String) = TextView(this).apply {
         text = value
@@ -277,10 +282,19 @@ private class AimView(context: Context, private val prefs: android.content.Share
         cue = point("cue", .28f, .55f)
         target = point("target", .64f, .55f)
         direction = point("direction", .48f, .55f)
-        // Restore bounds inside the visible area even if old settings were saved offscreen.
-        topLeft = point("top_left", .17f, .18f)
-        bottomRight = point("bottom_right", .83f, .94f)
+        // Each screen orientation has its own table bounds.
+        val orientationKey = if (width >= height) "landscape" else "portrait"
+        fun bound(name: String, defaultX: Float, defaultY: Float): V {
+            val key = "${orientationKey}_${name}"
+            return V(
+                prefs.getFloat("${key}_x", prefs.getFloat("${name}_x", defaultX)) * width,
+                prefs.getFloat("${key}_y", prefs.getFloat("${name}_y", defaultY)) * height
+            )
+        }
+        topLeft = bound("top_left", .17f, .18f)
+        bottomRight = bound("bottom_right", .83f, .82f)
         clampBounds()
+        clampMarkers()
         initialized = true
     }
     private fun save() {
@@ -291,22 +305,48 @@ private class AimView(context: Context, private val prefs: android.content.Share
             editor.putFloat("${name}_y", v.y / height)
         }
         put("cue", cue); put("target", target); put("direction", direction)
-        put("top_left", topLeft); put("bottom_right", bottomRight)
+        val orientationKey = if (width >= height) "landscape" else "portrait"
+        put("${orientationKey}_top_left", topLeft)
+        put("${orientationKey}_bottom_right", bottomRight)
         editor.apply()
     }
     private fun clampBounds() {
         val margin = 18f * density
-        val minSide = 60f * density
+        val minSide = max(60f * density, 2f * r + 12f * density)
         val maxX = (width.toFloat() - margin).coerceAtLeast(margin + minSide)
         val maxY = (height.toFloat() - margin).coerceAtLeast(margin + minSide)
         topLeft = V(topLeft.x.coerceIn(margin, maxX - minSide), topLeft.y.coerceIn(margin, maxY - minSide))
         bottomRight = V(bottomRight.x.coerceIn(topLeft.x + minSide, maxX), bottomRight.y.coerceIn(topLeft.y + minSide, maxY))
     }
+    private fun clampMarkers() {
+        if (width <= 0 || height <= 0) return
+        // The physical ball radius must stay inside the cushion rectangle.
+        val x1 = topLeft.x + r
+        val x2 = bottomRight.x - r
+        val y1 = topLeft.y + r
+        val y2 = bottomRight.y - r
+        fun inside(v: V): V = V(
+            v.x.coerceIn(min(x1, x2), max(x1, x2)),
+            v.y.coerceIn(min(y1, y2), max(y1, y2))
+        )
+        cue = inside(cue)
+        target = inside(target)
+        direction = inside(direction)
+    }
+
+    fun onBallSizeChanged() {
+        clampBounds()
+        clampMarkers()
+        save()
+        invalidate()
+    }
+
     fun resetBounds() {
         if (width <= 0 || height <= 0) return
         topLeft = V(width * .17f, height * .18f)
         bottomRight = V(width * .83f, height * .82f)
         clampBounds()
+        clampMarkers()
         save(); invalidate()
     }
     fun resetAll() {
@@ -439,6 +479,7 @@ private class AimView(context: Context, private val prefs: android.content.Share
                         4 -> bottomRight += delta
                     }
                     clampBounds()
+                    clampMarkers()
                     invalidate()
                 }
                 previous = p

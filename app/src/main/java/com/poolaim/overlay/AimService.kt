@@ -63,16 +63,44 @@ class AimService : Service() {
         header.addView(close)
         panel.addView(header)
 
-        val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
-        val sensitivityLabel = textLabel("Чувствительность: ${prefs.getInt("sensitivity", 100)}%")
+        val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            visibility = View.GONE
+            isFillViewport = false
+            addView(options)
+        }
+        val sensitivityLabel = textLabel("Движение шаров: ${prefs.getInt("sensitivity", 100)}%")
         val sensitivity = SeekBar(this).apply {
             max = 190
             progress = prefs.getInt("sensitivity", 100) - 10
             setOnSeekBarChangeListener(onSeek { value ->
                 val amount = value + 10
-                sensitivityLabel.text = "Чувствительность: $amount%"
+                sensitivityLabel.text = "Движение шаров: $amount%"
                 aim.sensitivity = amount / 100f
                 prefs.edit().putInt("sensitivity", amount).apply()
+            })
+        }
+        val rotationLabel = textLabel("Поворот направления: ${prefs.getInt("rotation_sensitivity", 100)}%")
+        val rotation = SeekBar(this).apply {
+            max = 190
+            progress = prefs.getInt("rotation_sensitivity", 100) - 10
+            setOnSeekBarChangeListener(onSeek { value ->
+                val amount = value + 10
+                rotationLabel.text = "Поворот направления: $amount%"
+                aim.rotationSensitivity = amount / 100f
+                prefs.edit().putInt("rotation_sensitivity", amount).apply()
+            })
+        }
+        val offsetLabel = textLabel("Вынос ручек: ${prefs.getInt("grip_offset", 38)} dp")
+        val offset = SeekBar(this).apply {
+            max = 85
+            progress = prefs.getInt("grip_offset", 38) - 15
+            setOnSeekBarChangeListener(onSeek { value ->
+                val amount = value + 15
+                offsetLabel.text = "Вынос ручек: $amount dp"
+                aim.gripOffset = amount.toFloat()
+                prefs.edit().putInt("grip_offset", amount).apply()
+                aim.invalidate()
             })
         }
         val sizeLabel = textLabel("Размер шаров: ${prefs.getInt("ball_size", 100)}%")
@@ -87,15 +115,40 @@ class AimService : Service() {
                 aim.invalidate()
             })
         }
-        options.addView(textLabel("Перетаскивай точки и углы рамки"))
+        options.addView(textLabel("Две зелёные точки: углы рамки"))
         options.addView(sensitivityLabel)
         options.addView(sensitivity)
+        options.addView(rotationLabel)
+        options.addView(rotation)
+        options.addView(offsetLabel)
+        options.addView(offset)
         options.addView(sizeLabel)
         options.addView(size)
-        val reset = smallButton("Сбросить рамку")
+        val reset = smallButton("Сбросить границы")
         reset.setOnClickListener { aim.resetBounds() }
         options.addView(reset)
-        panel.addView(options)
+        val resetAll = smallButton("Сбросить все настройки")
+        resetAll.setOnClickListener {
+            prefs.edit().clear().apply()
+            sensitivity.progress = 90
+            rotation.progress = 90
+            offset.progress = 23
+            size.progress = 50
+            aim.sensitivity = 1f
+            aim.rotationSensitivity = 1f
+            aim.gripOffset = 38f
+            aim.ballScale = 1f
+            sensitivityLabel.text = "Движение шаров: 100%"
+            rotationLabel.text = "Поворот направления: 100%"
+            offsetLabel.text = "Вынос ручек: 38 dp"
+            sizeLabel.text = "Размер шаров: 100%"
+            aim.resetAll()
+            panelParams.x = dp(10)
+            panelParams.y = dp(10)
+            wm.updateViewLayout(panel, panelParams)
+        }
+        options.addView(resetAll)
+        panel.addView(scroll)
 
         mode.setOnClickListener {
             editing = !editing
@@ -110,7 +163,15 @@ class AimService : Service() {
             aim.invalidate()
         }
         settings.setOnClickListener {
-            options.visibility = if (options.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            if (scroll.visibility == View.VISIBLE) {
+                scroll.visibility = View.GONE
+            } else {
+                val screenHeight = resources.displayMetrics.heightPixels
+                val maxHeight = (screenHeight * 0.55f).toInt().coerceAtLeast(dp(95))
+                scroll.layoutParams = LinearLayout.LayoutParams(dp(240), maxHeight)
+                scroll.visibility = View.VISIBLE
+                scroll.scrollTo(0, 0)
+            }
         }
         close.setOnClickListener { stopSelf() }
 
@@ -120,8 +181,8 @@ class AimService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = prefs.getInt("panel_x", dp(10))
-            y = prefs.getInt("panel_y", dp(65))
+            x = prefs.getInt("panel_x", dp(10)).coerceIn(0, (resources.displayMetrics.widthPixels - dp(180)).coerceAtLeast(0))
+            y = prefs.getInt("panel_y", dp(65)).coerceIn(0, (resources.displayMetrics.heightPixels - dp(80)).coerceAtLeast(0))
         }
         move.setOnTouchListener(object : View.OnTouchListener {
             var startX = 0
@@ -201,6 +262,8 @@ private class AimView(context: Context, private val prefs: android.content.Share
     var editing = true
     var sensitivity = prefs.getInt("sensitivity", 100) / 100f
     var ballScale = prefs.getInt("ball_size", 100) / 100f
+    var rotationSensitivity = prefs.getInt("rotation_sensitivity", 100) / 100f
+    var gripOffset = prefs.getInt("grip_offset", 38).toFloat()
     private val density get() = resources.displayMetrics.density
     private val r get() = 14f * density * ballScale
     private var canvasRef: Canvas? = null
@@ -214,8 +277,10 @@ private class AimView(context: Context, private val prefs: android.content.Share
         cue = point("cue", .28f, .55f)
         target = point("target", .64f, .55f)
         direction = point("direction", .48f, .55f)
-        topLeft = point("top_left", .075f, .20f)
-        bottomRight = point("bottom_right", .925f, .80f)
+        // Restore bounds inside the visible area even if old settings were saved offscreen.
+        topLeft = point("top_left", .17f, .18f)
+        bottomRight = point("bottom_right", .83f, .94f)
+        clampBounds()
         initialized = true
     }
     private fun save() {
@@ -229,10 +294,27 @@ private class AimView(context: Context, private val prefs: android.content.Share
         put("top_left", topLeft); put("bottom_right", bottomRight)
         editor.apply()
     }
+    private fun clampBounds() {
+        val margin = 18f * density
+        val minSide = 60f * density
+        val maxX = (width.toFloat() - margin).coerceAtLeast(margin + minSide)
+        val maxY = (height.toFloat() - margin).coerceAtLeast(margin + minSide)
+        topLeft = V(topLeft.x.coerceIn(margin, maxX - minSide), topLeft.y.coerceIn(margin, maxY - minSide))
+        bottomRight = V(bottomRight.x.coerceIn(topLeft.x + minSide, maxX), bottomRight.y.coerceIn(topLeft.y + minSide, maxY))
+    }
     fun resetBounds() {
-        topLeft = V(width * .075f, height * .20f)
-        bottomRight = V(width * .925f, height * .80f)
+        if (width <= 0 || height <= 0) return
+        topLeft = V(width * .17f, height * .18f)
+        bottomRight = V(width * .83f, height * .82f)
+        clampBounds()
         save(); invalidate()
+    }
+    fun resetAll() {
+        if (width <= 0 || height <= 0) return
+        cue = V(width * .28f, height * .55f)
+        target = V(width * .64f, height * .55f)
+        direction = V(width * .48f, height * .55f)
+        resetBounds()
     }
     private fun line(a: V, b: V, color: Int, stroke: Float = 3f) {
         paint.color = color; paint.style = Paint.Style.STROKE; paint.strokeWidth = stroke * density
@@ -254,7 +336,7 @@ private class AimView(context: Context, private val prefs: android.content.Share
         canvasRef?.drawText(label, p.x + r + 5f * density, p.y - r, paint)
     }
     private fun gripPoint(p: V, index: Int): V {
-        val offset = 38f * density
+        val offset = gripOffset * density
         return when (index) {
             0 -> V(p.x - offset, p.y + offset)
             1 -> V(p.x + offset, p.y + offset)
@@ -299,8 +381,17 @@ private class AimView(context: Context, private val prefs: android.content.Share
             marker(target, Color.YELLOW, "Цель", 1)
             marker(direction, Color.CYAN, "Направление", 2)
             paint.color = Color.GREEN; paint.style = Paint.Style.FILL
-            canvas.drawCircle(topLeft.x, topLeft.y, 12f * density, paint)
-            canvas.drawCircle(bottomRight.x, bottomRight.y, 12f * density, paint)
+            // Two diagonal handles, drawn slightly inward so they stay touchable.
+            for (i in 3..4) {
+                val grip = borderGrip(i)
+                canvas.drawCircle(grip.x, grip.y, 12f * density, paint)
+                paint.color = Color.BLACK
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 2f * density
+                canvas.drawCircle(grip.x, grip.y, 12f * density, paint)
+                paint.style = Paint.Style.FILL
+                paint.color = Color.GREEN
+            }
         }
         canvasRef = null
     }
@@ -321,12 +412,17 @@ private class AimView(context: Context, private val prefs: android.content.Share
             p = end
         }
     }
+    private fun borderGrip(index: Int): V {
+        val inset = 16f * density
+        return if (index == 3) V(topLeft.x + inset, topLeft.y + inset)
+        else V(bottomRight.x - inset, bottomRight.y - inset)
+    }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!editing) return false
         val p = V(event.x, event.y)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val handles = listOf(gripPoint(cue, 0), gripPoint(target, 1), gripPoint(direction, 2), topLeft, bottomRight)
+                val handles = listOf(gripPoint(cue, 0), gripPoint(target, 1), gripPoint(direction, 2), borderGrip(3), borderGrip(4))
                 val closest = handles.indices.minByOrNull { hypot(p.x - handles[it].x, p.y - handles[it].y) } ?: -1
                 drag = if (closest >= 0 && hypot(p.x - handles[closest].x, p.y - handles[closest].y) < 45f * density) closest else -1
                 previous = p
@@ -338,21 +434,5 @@ private class AimView(context: Context, private val prefs: android.content.Share
                     when (drag) {
                         0 -> cue += delta
                         1 -> target += delta
-                        2 -> direction += delta
-                        3 -> topLeft += delta
-                        4 -> bottomRight += delta
-                    }
-                    invalidate()
-                }
-                previous = p
-                return true
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (drag >= 0) save()
-                drag = -1
-                return true
-            }
-        }
-        return true
-    }
-}
+                        2 -> direction += (p - previous) * rotationSensitivity
+                        3 -> topLef

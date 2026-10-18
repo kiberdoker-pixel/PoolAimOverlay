@@ -435,4 +435,21 @@ private class AimView(context: Context, private val prefs: android.content.Share
                         0 -> cue += delta
                         1 -> target += delta
                         2 -> direction += (p - previous) * rotationSensitivity
-                        3 -> topLef
+                        3 -> topLeft += delta
+                        4 -> bottomRight += delta
+                    }
+                    clampBounds()
+                    invalidate()
+                }
+                previous = p
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (drag >= 0) save()
+                drag = -1
+                return true
+            }
+        }
+        return true
+    }
+}

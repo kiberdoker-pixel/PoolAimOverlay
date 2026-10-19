@@ -37,14 +37,9 @@ internal object LineDetector {
                 val isWhite = r > 175 && g > 175 && b > 175 &&
                     max(r, max(g, b)) - min(r, min(g, b)) < 65
                 if (isWhite) white++
-                val inside = if (landscape) {
-                    px > w * .19f && px < w * .81f &&
-                        py > h * .21f && py < h * .92f
-                } else {
-                    // Capture may report portrait dimensions even while the game is landscape.
-                    px > w * .06f && px < w * .94f &&
-                        py > h * .06f && py < h * .94f
-                }
+                val area = TableBoundsOverlay.bounds
+                val inside = landscape && px >= w * area[0] && px <= w * area[2] &&
+                    py >= h * area[1] && py <= h * area[3]
                 bright[y * cols + x] = inside && isWhite
             }
         }

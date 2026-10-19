@@ -50,6 +50,12 @@ internal class VisualLinesOverlay(private val context: Context) {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
         }
+        private val cuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.GREEN
+            strokeWidth = 2.5f * resources.displayMetrics.density
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+        }
         private var result: LineDetector.Result? = null
         fun update(value: LineDetector.Result) {
             result = value
@@ -63,6 +69,15 @@ internal class VisualLinesOverlay(private val context: Context) {
             val sy = height.toFloat() / r.height
             for (s in r.segments) {
                 canvas.drawLine(s.x1 * sx, s.y1 * sy, s.x2 * sx, s.y2 * sy, paint)
+            }
+            val cx = r.cueX
+            val cy = r.cueY
+            if (cx != null && cy != null) {
+                val x = cx * sx
+                val y = cy * sy
+                val arm = 12f * resources.displayMetrics.density
+                canvas.drawLine(x - arm, y, x + arm, y, cuePaint)
+                canvas.drawLine(x, y - arm, x, y + arm, cuePaint)
             }
         }
     }

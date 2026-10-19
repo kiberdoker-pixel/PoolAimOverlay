@@ -123,9 +123,10 @@ internal object LineDetector {
                 start = i
             }
         }
-        // Conservative geometry test: a short object-ball guide should be near
-        // an endpoint of a long aiming guide, with a different direction.
-        // No line is shown if the relationship is not sufficiently clear.
+        // Experimental object-ball selection: prefer a short guide that goes
+        // FORWARD from the collision end of the long incoming guide.
+        // A cue-ball deflection is often more transverse. This is a heuristic,
+        // not yet a verified detection of either ball.
         fun length(s: Segment): Double = hypot(
             (s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble())
         fun distance(ax: Float, ay: Float, bx: Float, by: Float): Double =
@@ -138,26 +139,33 @@ internal object LineDetector {
         var bestScore = Double.NEGATIVE_INFINITY
         for (longLine in longLines) {
             val ll = length(longLine)
-            for (shortLine in shortLines) {
-                val sl = length(shortLine)
-                val cosine = abs(((longLine.x2 - longLine.x1) *
-                    (shortLine.x2 - shortLine.x1) +
-                    (longLine.y2 - longLine.y1) *
-                    (shortLine.y2 - shortLine.y1)) / (ll * sl))
-                // Reject parallel fragments of the cue's long guide.
-                if (cosine > 0.94) continue
-                val ends = arrayOf(
-                    floatArrayOf(longLine.x1, longLine.y1),
-                    floatArrayOf(longLine.x2, longLine.y2)
-                )
-                for (end in ends) {
+            // Test each endpoint as a possible collision point. The other
+            // endpoint is treated as the cue-ball side of the incoming guide.
+            val endpoints = arrayOf(
+                floatArrayOf(longLine.x1, longLine.y1, longLine.x2, longLine.y2),
+                floatArrayOf(longLine.x2, longLine.y2, longLine.x1, longLine.y1)
+            )
+            for (end in endpoints) {
+                val incomingX = (end[0] - end[2]) / ll
+                val incomingY = (end[1] - end[3]) / ll
+                for (shortLine in shortLines) {
+                    val sl = length(shortLine)
                     val d1 = distance(end[0], end[1], shortLine.x1, shortLine.y1)
                     val d2 = distance(end[0], end[1], shortLine.x2, shortLine.y2)
                     val near = min(d1, d2)
                     if (near > 105.0) continue
-                    // Prefer a short segment beginning near the collision area.
-                    val score = 200.0 - near * 2.0 + min(sl, 100.0) * 0.25 +
-                        min(ll, 600.0) * 0.03
+                    // Orient the candidate AWAY from the collision area.
+                    val dx = if (d1 <= d2) shortLine.x2 - shortLine.x1
+                             else shortLine.x1 - shortLine.x2
+                    val dy = if (d1 <= d2) shortLine.y2 - shortLine.y1
+                             else shortLine.y1 - shortLine.y2
+                    val forward = (dx * incomingX + dy * incomingY) / sl
+                    // Do not accept backward or strongly sideways fragments.
+                    if (forward < 0.30) continue
+                    // Avoid parallel fragments of the long incoming guide.
+                    if (forward > 0.97) continue
+                    val score = forward * 180.0 - near * 1.5 +
+                        min(sl, 100.0) * 0.20 + min(ll, 600.0) * 0.02
                     if (score > bestScore) {
                         bestScore = score
                         best = shortLine
@@ -168,7 +176,7 @@ internal object LineDetector {
         val selected = best?.let { listOf(it) } ?: emptyList()
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Длинные:${longLines.size} Короткие:${shortLines.size} " +
-            "Цель:${if (best == null) "не найдена" else "гипотеза"}"
+            "Цель:${if (best == null) "не найдена" else "гипотеза-вперёд"}"
         return Result(summary, selected, w, h)
     }
 }

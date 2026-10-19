@@ -6,7 +6,7 @@ import kotlin.math.*
 /** Experimental geometric selection. The chosen line is only a hypothesis, not verified ball identification. */
 internal object LineDetector {
     data class Segment(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
-    data class Result(val summary: String, val segments: List<Segment>, val width: Int, val height: Int)
+    data class Result(val summary: String, val segments: List<Segment>, val width: Int, val height: Int, val cueX: Float? = null, val cueY: Float? = null)
 
     fun inspect(image: Image): Result {
         val w = image.width
@@ -132,9 +132,60 @@ internal object LineDetector {
         val longestLength = longest?.let { segmentLength(it) } ?: 0.0
         val minGuideLength = 110.0
         val chosen = if (longestLength >= minGuideLength) longest else null
+        // Cue-ball diagnostic: look for a solid white disk close to either end
+        // of the long guide. No cue-ball coordinate is fabricated if uncertain.
+        fun whiteAt(px: Int, py: Int): Boolean {
+            if (px !in 0 until w || py !in 0 until h) return false
+            val offset = py.toLong() * rowStride + px.toLong() * pixelStride
+            if (offset + 2 >= buffer.limit()) return false
+            val p = offset.toInt()
+            val r = buffer.get(p).toInt() and 255
+            val g = buffer.get(p + 1).toInt() and 255
+            val b = buffer.get(p + 2).toInt() and 255
+            return r > 185 && g > 185 && b > 185 &&
+                max(r, max(g, b)) - min(r, min(g, b)) < 48
+        }
+        var cueX: Float? = null
+        var cueY: Float? = null
+        var bestBallScore = 0.0
+        if (chosen != null) {
+            val bounds = TableBoundsOverlay.bounds
+            val endpoints = arrayOf(floatArrayOf(chosen.x1, chosen.y1),
+                floatArrayOf(chosen.x2, chosen.y2))
+            // The cue ball is typically ~25-35 capture pixels in radius.
+            // Sample the inner disk rather than its dark outline.
+            val offsets = arrayOf(
+                intArrayOf(0, 0), intArrayOf(-9, 0), intArrayOf(9, 0),
+                intArrayOf(0, -9), intArrayOf(0, 9),
+                intArrayOf(-12, -12), intArrayOf(12, -12),
+                intArrayOf(-12, 12), intArrayOf(12, 12),
+                intArrayOf(-18, 0), intArrayOf(18, 0),
+                intArrayOf(0, -18), intArrayOf(0, 18)
+            )
+            for (end in endpoints) {
+                for (dy in -52..52 step 8) for (dx in -52..52 step 8) {
+                    val cx = (end[0] + dx).toInt()
+                    val cy = (end[1] + dy).toInt()
+                    if (cx < w * bounds[0] + 24 || cx > w * bounds[2] - 24 ||
+                        cy < h * bounds[1] + 24 || cy > h * bounds[3] - 24) continue
+                    var whiteCount = 0
+                    for (offset in offsets) if (whiteAt(cx + offset[0], cy + offset[1])) whiteCount++
+                    val fraction = whiteCount.toDouble() / offsets.size
+                    val dist = hypot(dx.toDouble(), dy.toDouble())
+                    // Solid white ball beats a thin white guide crossing the sample.
+                    val score = fraction - dist * 0.0012
+                    if (fraction >= 0.77 && score > bestBallScore) {
+                        bestBallScore = score
+                        cueX = cx.toFloat()
+                        cueY = cy.toFloat()
+                    }
+                }
+            }
+        }
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Отрезки:${segments.size} Макс:${longestLength.roundToInt()}px " +
-            "Длинная:${if (chosen != null) "кандидат" else "нет"}"
-        return Result(summary, chosen?.let { listOf(it) } ?: emptyList(), w, h)
+            "Длинная:${if (chosen != null) "кандидат" else "нет"} " +
+            "Биток:${if (cueX != null) "гипотеза" else "не найден"}"
+        return Result(summary, chosen?.let { listOf(it) } ?: emptyList(), w, h, cueX, cueY)
     }
 }

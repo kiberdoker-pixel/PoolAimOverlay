@@ -234,6 +234,9 @@ internal object LineDetector {
         var cueY: Float? = null
         var bestBallScore = 0.0
         var candidateCount = 0
+        var distinctCount = 0
+        var alignedCount = 0
+        var maxAlignment = 0.0
         // Retain spatially distinct circles instead of just the brightest one.
         data class BallCandidate(val x: Int, val y: Int, val score: Double)
         val candidates = ArrayList<BallCandidate>()
@@ -259,10 +262,13 @@ internal object LineDetector {
                     if (distinct.size >= 35) break
                 }
             }
+            distinctCount = distinct.size
             var bestCombined = 0.0
             for (candidate in distinct) {
                 val alignment = cueAlignment(candidate.x, candidate.y)
+                if (alignment > maxAlignment) maxAlignment = alignment
                 if (alignment <= 0.0) continue
+                alignedCount++
                 val combined = alignment * 0.8 + candidate.score * 0.2
                 if (combined > bestCombined) {
                     bestCombined = combined
@@ -296,7 +302,9 @@ internal object LineDetector {
             "Отрезки:${segments.size} Макс:${longestLength.roundToInt()}px " +
             "Длинная:${if (chosen != null) "кандидат" else "нет"} " +
             "Биток:${if (cueX != null) "кий+линия" else "не найден"} " +
-            "Оценка:${(bestBallScore * 100).roundToInt()} Круги:$candidateCount"
+            "Оценка:${(bestBallScore * 100).roundToInt()} " +
+            "Круги:$candidateCount Разные:$distinctCount " +
+            "Кий:$alignedCount Сила:${(maxAlignment * 100).roundToInt()}"
         return Result(summary, chosen?.let { listOf(it) } ?: emptyList(), w, h, cueX, cueY)
     }
 }

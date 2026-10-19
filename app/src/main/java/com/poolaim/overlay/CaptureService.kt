@@ -4,8 +4,6 @@ import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
-import android.graphics.Bitmap
-import android.media.Image
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -29,6 +27,10 @@ class CaptureService : Service() {
     private var reader: ImageReader? = null
     private var display: VirtualDisplay? = null
     private var worker: HandlerThread? = null
+    private var captureWidth = 0
+    private var captureHeight = 0
+    private var captureDensity = 0
+    private var captureHandler: Handler? = null
     private var frameCount = 0L
     private var stopping = false
     private var startedForeground = false
@@ -110,13 +112,38 @@ class CaptureService : Service() {
                     stopSelf()
                 }
             }, handler)
-            val metrics = android.util.DisplayMetrics()
-            (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(metrics)
-            val width = metrics.widthPixels.coerceAtLeast(1)
-            val height = metrics.heightPixels.coerceAtLeast(1)
-            reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
-            reader!!.setOnImageAvailableListener({ source ->
-                val image = source.acquireLatestImage()
+            captureHandler = handler
+            val metrics = currentDisplayMetrics()
+            captureWidth = metrics.widthPixels.coerceAtLeast(1)
+            captureHeight = metrics.heightPixels.coerceAtLeast(1)
+            captureDensity = metrics.densityDpi.coerceAtLeast(1)
+            reader = makeReader(captureWidth, captureHeight, handler)
+            display = mp.createVirtualDisplay("AimX 8BP capture", captureWidth, captureHeight,
+                captureDensity, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                reader!!.surface, null, handler)
+            handler.post(rotationCheck)
+            report("Захват подключён · ожидаем первые кадры")
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, notification("Ожидание кадров…"))
+        } catch (e: Exception) {
+            val msg = "Ошибка ${e.javaClass.simpleName}: ${e.message ?: "нет подробностей"}"
+            android.util.Log.e("AimXCapture", msg, e)
+            report(msg)
+            stopSelf()
+        }
+        return START_NOT_STICKY
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentDisplayMetrics(): android.util.DisplayMetrics =
+        android.util.DisplayMetrics().also {
+            (getSystemService(WINDOW_SERVICE) as WindowManager).defaultDisplay.getRealMetrics(it)
+        }
+
+    private fun makeReader(width: Int, height: Int, handler: Handler): ImageReader =
+        ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2).apply {
+            setOnImageAvailableListener({ source ->
+                val image = try { source.acquireLatestImage() } catch (_: IllegalStateException) { null }
                 if (image != null) {
                     try {
                         frameCount++
@@ -140,19 +167,46 @@ class CaptureService : Service() {
                     } finally { image.close() }
                 }
             }, handler)
-            display = mp.createVirtualDisplay("AimX 8BP capture", width, height,
-                metrics.densityDpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                reader!!.surface, null, handler)
-            report("Захват подключён · ожидаем первые кадры")
-            getSystemService(NotificationManager::class.java)
-                .notify(NOTIFICATION_ID, notification("Ожидание кадров…"))
-        } catch (e: Exception) {
-            val msg = "Ошибка ${e.javaClass.simpleName}: ${e.message ?: "нет подробностей"}"
-            android.util.Log.e("AimXCapture", msg, e)
-            report(msg)
-            stopSelf()
         }
-        return START_NOT_STICKY
+
+    // Android 15: MediaProjection is single-use. Resize the existing virtual display;
+    // do NOT request another projection or create another virtual display on rotation.
+    private val rotationCheck = object : Runnable {
+        override fun run() {
+            if (stopping || projection == null) return
+            try {
+                val metrics = currentDisplayMetrics()
+                val newWidth = metrics.widthPixels.coerceAtLeast(1)
+                val newHeight = metrics.heightPixels.coerceAtLeast(1)
+                val newDensity = metrics.densityDpi.coerceAtLeast(1)
+                if (newWidth != captureWidth || newHeight != captureHeight || newDensity != captureDensity) {
+                    val vd = display
+                    val handler = captureHandler
+                    if (vd != null && handler != null) {
+                        val replacement = makeReader(newWidth, newHeight, handler)
+                        val previous = reader
+                        vd.setSurface(null)
+                        vd.resize(newWidth, newHeight, newDensity)
+                        vd.setSurface(replacement.surface)
+                        reader = replacement
+                        previous?.setOnImageAvailableListener(null, null)
+                        previous?.close()
+                        captureWidth = newWidth
+                        captureHeight = newHeight
+                        captureDensity = newDensity
+                        detectorResult = "Поворот: ${newWidth}x${newHeight} · ожидаем анализ"
+                        mainHandler.post {
+                            visualOverlay?.update(LineDetector.Result("", emptyList(), newWidth, newHeight))
+                        }
+                        report(detectorResult)
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AimXCapture", "Resize failed", e)
+                report("Ошибка поворота: ${e.javaClass.simpleName}")
+            }
+            if (!stopping && projection != null) captureHandler?.postDelayed(this, 1000L)
+        }
     }
 
     override fun onDestroy() {
@@ -162,6 +216,8 @@ class CaptureService : Service() {
         }
         if (!stopping) {
             stopping = true
+            captureHandler?.removeCallbacks(rotationCheck)
+            captureHandler = null
             reader?.setOnImageAvailableListener(null, null)
             display?.release()
             display = null

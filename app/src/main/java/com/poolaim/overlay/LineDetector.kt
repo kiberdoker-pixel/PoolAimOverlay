@@ -123,145 +123,18 @@ internal object LineDetector {
                 start = i
             }
         }
-        // Experimental ball-anchored selection. Still a hypothesis, not a verified
-        // object-ball detector. Prefer a short guide starting near a coloured ball.
-        fun length(s: Segment): Double = hypot(
-            (s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble())
-        fun distance(ax: Float, ay: Float, bx: Float, by: Float): Double =
-            hypot((ax - bx).toDouble(), (ay - by).toDouble())
-
-        // Estimate whether the neighbourhood contains a ball instead of blue cloth.
-        // Sampling around, not directly on, the bright guide avoids its white pixels.
-        fun ballEvidence(cx: Float, cy: Float): Double {
-            var coloured = 0
-            var sampled = 0
-            for (oy in -28..28 step 8) for (ox in -28..28 step 8) {
-                val rr = ox * ox + oy * oy
-                if (rr < 64 || rr > 784) continue
-                val px = (cx + ox).toInt()
-                val py = (cy + oy).toInt()
-                if (px !in 0 until w || py !in 0 until h) continue
-                val pos = py.toLong() * rowStride + px.toLong() * pixelStride
-                if (pos + 2 >= buffer.limit()) continue
-                val p = pos.toInt()
-                val r = buffer.get(p).toInt() and 255
-                val g = buffer.get(p + 1).toInt() and 255
-                val b = buffer.get(p + 2).toInt() and 255
-                val high = max(r, max(g, b))
-                val low = min(r, min(g, b))
-                val blueCloth = b > r * 1.18 && g > r * 1.12 && b > 90
-                if (high > 65 && high - low > 48 && !blueCloth) coloured++
-                sampled++
-            }
-            return if (sampled == 0) 0.0 else coloured.toDouble() / sampled
-        }
-
-        val longLines = segments.filter { length(it) >= 145.0 }
-            .sortedByDescending { length(it) }.take(12)
-        val shortLines = segments.filter { length(it) in 28.0..140.0 }
-        var nearbyCount = 0
-        var forwardCount = 0
-        var aheadCount = 0
-        var best: Segment? = null
-        var bestScore = Double.NEGATIVE_INFINITY
-        for (longLine in longLines) {
-            val ll = length(longLine)
-            val endpoints = arrayOf(
-                floatArrayOf(longLine.x1, longLine.y1, longLine.x2, longLine.y2),
-                floatArrayOf(longLine.x2, longLine.y2, longLine.x1, longLine.y1)
-            )
-            for (end in endpoints) {
-                val incomingX = (end[0] - end[2]) / ll
-                val incomingY = (end[1] - end[3]) / ll
-                // Estimate the object-ball centre on the forward side of the impact.
-                // Search a small region, not only the beginning of a guide segment.
-                var ballX = Float.NaN
-                var ballY = Float.NaN
-                var ballStrength = 0.0
-                val sideX = -incomingY
-                val sideY = incomingX
-                for (along in 24..80 step 8) for (side in -40..40 step 8) {
-                    val cx = (end[0] + incomingX * along + sideX * side).toFloat()
-                    val cy = (end[1] + incomingY * along + sideY * side).toFloat()
-                    val evidence = ballEvidence(cx, cy)
-                    // Bias towards plausible ball centres just ahead of impact.
-                    val quality = evidence - abs(side) * 0.0012 - abs(along - 43) * 0.0006
-                    if (quality > ballStrength && evidence >= 0.055) {
-                        ballStrength = quality
-                        ballX = cx
-                        ballY = cy
-                    }
-                }
-                for (shortLine in shortLines) {
-                    val sl = length(shortLine)
-                    val d1 = distance(end[0], end[1], shortLine.x1, shortLine.y1)
-                    val d2 = distance(end[0], end[1], shortLine.x2, shortLine.y2)
-                    val near = min(d1, d2)
-                    if (near > 135.0) continue
-                    nearbyCount++
-                    val startX = if (d1 <= d2) shortLine.x1 else shortLine.x2
-                    val startY = if (d1 <= d2) shortLine.y1 else shortLine.y2
-                    val dx = if (d1 <= d2) shortLine.x2 - shortLine.x1
-                             else shortLine.x1 - shortLine.x2
-                    val dy = if (d1 <= d2) shortLine.y2 - shortLine.y1
-                             else shortLine.y1 - shortLine.y2
-                    val forward = (dx * incomingX + dy * incomingY) / sl
-                    if (forward < 0.05) continue
-                    forwardCount++
-                    // The target ball lies ahead of the collision marker. Cue-ball
-                    // deflection often starts right at that marker instead.
-                    val ahead = ((startX - end[0]) * incomingX +
-                        (startY - end[1]) * incomingY).toDouble()
-                    if (ahead < -22.0) continue
-                    aheadCount++
-                    val evidence = ballEvidence(startX, startY)
-                    // Colour evidence is a preference, not a hard rejection: striped
-                    // and pale object balls may have very little saturated colour.
-                    // A true object-ball guide should follow the radial direction
-                    // from impact towards the object-ball centre. Penalise lateral
-                    // offsets instead of rewarding only a forward-pointing segment.
-                    var anchorBonus = 0.0
-                    if (!ballX.isNaN() && !ballY.isNaN()) {
-                        val vx = (ballX - end[0]).toDouble()
-                        val vy = (ballY - end[1]).toDouble()
-                        val vl = hypot(vx, vy)
-                        if (vl > 8.0) {
-                            val radial = (dx * vx + dy * vy) / (sl * vl)
-                            val perpendicular = abs((ballX - startX) * dy -
-                                (ballY - startY) * dx) / sl
-                            val startToBall = distance(startX, startY, ballX, ballY)
-                            anchorBonus = radial * 72.0 -
-                                perpendicular.coerceAtMost(85.0) * 1.5 -
-                                max(0.0, startToBall - 35.0) * 0.42
-                        }
-                    }
-                    val score = evidence * 25.0 + forward * 22.0 +
-                        ahead.coerceIn(-22.0, 90.0) * 0.18 -
-                        abs(near - 40.0) * 0.30 + min(sl, 100.0) * 0.10 +
-                        anchorBonus
-                    if (score > bestScore) {
-                        bestScore = score
-                        best = shortLine
-                    }
-                }
-            }
-        }
-        // Diagnostic fallback: display one real detected segment even when the
-        // geometric object-ball hypothesis cannot be established.
-        // It is NOT a verified target-ball trajectory.
-        val fallback = if (best == null) {
-            longLines.firstOrNull() ?: shortLines.maxByOrNull { length(it) }
-        } else null
-        val selected = (best ?: fallback)?.let { listOf(it) } ?: emptyList()
-        val status = when {
-            best != null -> "гипотеза-центр"
-            fallback != null -> "диагностика"
-            else -> "не найдена"
-        }
+        // Stage 1 diagnostic: detect the longest bright straight segment only.
+        // This does NOT yet prove that the segment belongs to the cue-ball guide.
+        fun segmentLength(s: Segment): Double = hypot(
+            (s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble()
+        )
+        val longest = segments.maxByOrNull { segmentLength(it) }
+        val longestLength = longest?.let { segmentLength(it) } ?: 0.0
+        val minGuideLength = 110.0
+        val chosen = if (longestLength >= minGuideLength) longest else null
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
-            "Длинные:${longLines.size} Короткие:${shortLines.size} " +
-            "Рядом:$nearbyCount Вперёд:$forwardCount Перед:$aheadCount " +
-            "Цель:$status"
-        return Result(summary, selected, w, h)
+            "Отрезки:${segments.size} Макс:${longestLength.roundToInt()}px " +
+            "Длинная:${if (chosen != null) "кандидат" else "нет"}"
+        return Result(summary, chosen?.let { listOf(it) } ?: emptyList(), w, h)
     }
 }

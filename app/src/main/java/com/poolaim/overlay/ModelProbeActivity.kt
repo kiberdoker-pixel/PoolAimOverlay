@@ -87,11 +87,12 @@ class ModelProbeActivity : Activity() {
                 val proposals = AutoBallProposals.find(pixels, b.width, b.height)
                 // Restrict inference count to avoid prolonged UI wait on phones.
                 val scores = PatchBallClassifier(m, threshold = 0.80f).score(pixels, b.width, b.height, proposals)
+                val uniqueScores = BallResultFilter.deduplicate(scores, 27f * b.width / 3200f)
                 runOnUiThread {
                     if (version == generation) {
-                        detected = scores
+                        detected = uniqueScores
                         imageView.invalidate()
-                        info.text = "Кандидатов: ${proposals.size}; модель приняла: ${scores.size}. Эксперимент: возможны пропуски и ложные срабатывания."
+                        info.text = "Кандидатов: ${proposals.size}; модель приняла: ${scores.size}; после удаления дублей: ${uniqueScores.size}. Эксперимент: возможны пропуски и ложные срабатывания."
                     }
                 }
             } catch (e: Exception) {

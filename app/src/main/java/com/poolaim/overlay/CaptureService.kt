@@ -34,6 +34,7 @@ class CaptureService : Service() {
     private var startedForeground = false
     private var detectorResult = "Анализ ещё не выполнялся"
     private var overlay: DiagnosticOverlay? = null
+    private var visualOverlay: VisualLinesOverlay? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -81,6 +82,7 @@ class CaptureService : Service() {
                 mainHandler.post {
                     try {
                         if (overlay == null) overlay = DiagnosticOverlay(this).also { it.show() }
+                        if (visualOverlay == null) visualOverlay = VisualLinesOverlay(this).also { it.show() }
                     } catch (e: Exception) {
                         android.util.Log.e("AimXOverlay", "Cannot show overlay", e)
                     }
@@ -120,7 +122,9 @@ class CaptureService : Service() {
                         frameCount++
                         if (frameCount % 15L == 0L) {
                             try {
-                                detectorResult = LineDetector.inspect(image)
+                                val detected = LineDetector.inspect(image)
+                                detectorResult = detected.summary
+                                mainHandler.post { visualOverlay?.update(detected) }
                             } catch (e: Exception) {
                                 detectorResult = "Ошибка анализа: ${e.javaClass.simpleName}"
                                 android.util.Log.e("AimXDetector", "Analysis failed", e)
@@ -152,7 +156,10 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
-        mainHandler.post { overlay?.hide(); overlay = null }
+        mainHandler.post {
+            visualOverlay?.hide(); visualOverlay = null
+            overlay?.hide(); overlay = null
+        }
         if (!stopping) {
             stopping = true
             reader?.setOnImageAvailableListener(null, null)

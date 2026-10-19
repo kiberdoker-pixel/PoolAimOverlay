@@ -37,6 +37,7 @@ class CaptureService : Service() {
     private var detectorResult = "Анализ ещё не выполнялся"
     private var overlay: DiagnosticOverlay? = null
     private var visualOverlay: VisualLinesOverlay? = null
+    private var tableOverlay: TableBoundsOverlay? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -85,6 +86,7 @@ class CaptureService : Service() {
                     try {
                         if (overlay == null) overlay = DiagnosticOverlay(this).also { it.show() }
                         if (visualOverlay == null) visualOverlay = VisualLinesOverlay(this).also { it.show() }
+                        if (tableOverlay == null) tableOverlay = TableBoundsOverlay(this).also { it.show() }
                     } catch (e: Exception) {
                         android.util.Log.e("AimXOverlay", "Cannot show overlay", e)
                     }
@@ -211,6 +213,7 @@ class CaptureService : Service() {
 
     override fun onDestroy() {
         mainHandler.post {
+            tableOverlay?.hide(); tableOverlay = null
             visualOverlay?.hide(); visualOverlay = null
             overlay?.hide(); overlay = null
         }

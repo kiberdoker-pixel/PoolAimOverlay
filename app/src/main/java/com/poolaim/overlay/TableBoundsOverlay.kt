@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.graphics.RectF
 import android.os.Build
 import android.view.Gravity
 import android.view.MotionEvent
@@ -59,7 +60,7 @@ internal class TableBoundsOverlay(private val context: Context) {
 
     private fun openEditor() {
         if (editor != null) return
-        editor = BoundsView(context).also {
+        editor = BoundsView(context) { closeEditor(true) }.also {
             wm.addView(it, params(
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -90,12 +91,21 @@ internal class TableBoundsOverlay(private val context: Context) {
         button = null
     }
 
-    private class BoundsView(context: Context) : View(context) {
+    private class BoundsView(context: Context, private val onSave: () -> Unit) : View(context) {
         private val rectPaint = Paint(3).apply {
             color = Color.GREEN; style = Paint.Style.STROKE; strokeWidth = 4f
         }
         private val pointPaint = Paint(3).apply { color = Color.GREEN }
         private val values = bounds.copyOf()
+        private val saveRect = RectF()
+        private val savePaint = Paint(3).apply { color = 0xEE176B35.toInt() }
+        private val saveText = Paint(3).apply {
+            color = Color.WHITE
+            textSize = 36f
+            textAlign = Paint.Align.CENTER
+        }
+        private val touchRadius = 76f
+        private var savePressed = false
         private var active = -1
         private val margin = 30f
         private val minGap = 80f
@@ -109,6 +119,12 @@ internal class TableBoundsOverlay(private val context: Context) {
             canvas.drawRect(l, t, r, b, rectPaint)
             canvas.drawCircle(l, t, 22f, pointPaint)
             canvas.drawCircle(r, b, 22f, pointPaint)
+            // The save control is part of the touchable editor itself, never behind it.
+            val buttonW = min(300f, width * .28f)
+            val buttonH = 84f
+            saveRect.set(width - buttonW - 22f, 20f, width - 22f, 20f + buttonH)
+            canvas.drawRoundRect(saveRect, 18f, 18f, savePaint)
+            canvas.drawText("СОХРАНИТЬ", saveRect.centerX(), saveRect.centerY() + 12f, saveText)
         }
 
         override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -119,10 +135,16 @@ internal class TableBoundsOverlay(private val context: Context) {
                         (event.y - values[1] * height) * (event.y - values[1] * height)
                     val d2 = (event.x - values[2] * width) * (event.x - values[2] * width) +
                         (event.y - values[3] * height) * (event.y - values[3] * height)
-                    active = if (d1 <= d2) 0 else 2
+                    savePressed = saveRect.contains(event.x, event.y)
+                    active = if (savePressed) -1 else when {
+                        d1 <= touchRadius * touchRadius && d1 <= d2 -> 0
+                        d2 <= touchRadius * touchRadius -> 2
+                        else -> -1
+                    }
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    if (active == -1) return true
                     val x = event.x.coerceIn(margin, max(margin, width - margin)) / width
                     val y = event.y.coerceIn(margin, max(margin, height - margin)) / height
                     if (active == 0) {
@@ -135,8 +157,16 @@ internal class TableBoundsOverlay(private val context: Context) {
                     invalidate()
                     return true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_UP -> {
+                    val shouldSave = savePressed && saveRect.contains(event.x, event.y)
                     active = -1
+                    savePressed = false
+                    if (shouldSave) onSave()
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    active = -1
+                    savePressed = false
                     return true
                 }
             }

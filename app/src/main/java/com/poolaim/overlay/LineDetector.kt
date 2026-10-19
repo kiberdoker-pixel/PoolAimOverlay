@@ -132,60 +132,105 @@ internal object LineDetector {
         val longestLength = longest?.let { segmentLength(it) } ?: 0.0
         val minGuideLength = 110.0
         val chosen = if (longestLength >= minGuideLength) longest else null
-        // Cue-ball diagnostic: look for a solid white disk close to either end
-        // of the long guide. No cue-ball coordinate is fabricated if uncertain.
+        // Stage 2: independently detect a bright, approximately circular cue ball.
+        // No reliance on guide endpoints; no tracking or fabricated coordinates.
+        val bounds = TableBoundsOverlay.bounds
+        val minX = (w * bounds[0]).toInt().coerceAtLeast(0) + 38
+        val maxX = (w * bounds[2]).toInt().coerceAtMost(w - 1) - 38
+        val minY = (h * bounds[1]).toInt().coerceAtLeast(0) + 38
+        val maxY = (h * bounds[3]).toInt().coerceAtMost(h - 1) - 38
+        // The screenshots show a cue-ball diameter of roughly 55-65 capture px.
+        // Multiple radii tolerate differences between phones and game scaling.
+        val radii = intArrayOf(22, 27, 32)
+        val insidePoints = arrayOf(
+            intArrayOf(0, 0), intArrayOf(-10, 0), intArrayOf(10, 0),
+            intArrayOf(0, -10), intArrayOf(0, 10),
+            intArrayOf(-15, -9), intArrayOf(15, -9),
+            intArrayOf(-15, 9), intArrayOf(15, 9),
+            intArrayOf(-20, 0), intArrayOf(20, 0),
+            intArrayOf(0, -20), intArrayOf(0, 20)
+        )
+        val ringPoints = Array(16) { i ->
+            val theta = i * 2.0 * PI / 16.0
+            doubleArrayOf(cos(theta), sin(theta))
+        }
         fun whiteAt(px: Int, py: Int): Boolean {
             if (px !in 0 until w || py !in 0 until h) return false
-            val offset = py.toLong() * rowStride + px.toLong() * pixelStride
-            if (offset + 2 >= buffer.limit()) return false
-            val p = offset.toInt()
+            val pos = py.toLong() * rowStride + px.toLong() * pixelStride
+            if (pos + 2 >= buffer.limit()) return false
+            val p = pos.toInt()
             val r = buffer.get(p).toInt() and 255
             val g = buffer.get(p + 1).toInt() and 255
             val b = buffer.get(p + 2).toInt() and 255
-            return r > 185 && g > 185 && b > 185 &&
-                max(r, max(g, b)) - min(r, min(g, b)) < 48
+            return r > 180 && g > 180 && b > 180 &&
+                max(r, max(g, b)) - min(r, min(g, b)) < 55
+        }
+        fun ballScore(cx: Int, cy: Int, radius: Int): Double {
+            // Centre marking can be dark, so do not require a white centre pixel.
+            var inner = 0
+            for (p in insidePoints) {
+                val dx = p[0] * radius / 27
+                val dy = p[1] * radius / 27
+                if (whiteAt(cx + dx, cy + dy)) inner++
+            }
+            val innerFraction = inner.toDouble() / insidePoints.size
+            if (innerFraction < 0.69) return -1.0
+            // Outside the disk should not be another broad white object.
+            var outer = 0
+            for (p in ringPoints) {
+                val dx = (p[0] * (radius + 9)).roundToInt()
+                val dy = (p[1] * (radius + 9)).roundToInt()
+                if (whiteAt(cx + dx, cy + dy)) outer++
+            }
+            val outerFraction = outer.toDouble() / ringPoints.size
+            if (outerFraction > 0.32) return -1.0
+            return innerFraction - outerFraction * 0.45
         }
         var cueX: Float? = null
         var cueY: Float? = null
         var bestBallScore = 0.0
-        if (chosen != null) {
-            val bounds = TableBoundsOverlay.bounds
-            val endpoints = arrayOf(floatArrayOf(chosen.x1, chosen.y1),
-                floatArrayOf(chosen.x2, chosen.y2))
-            // The cue ball is typically ~25-35 capture pixels in radius.
-            // Sample the inner disk rather than its dark outline.
-            val offsets = arrayOf(
-                intArrayOf(0, 0), intArrayOf(-9, 0), intArrayOf(9, 0),
-                intArrayOf(0, -9), intArrayOf(0, 9),
-                intArrayOf(-12, -12), intArrayOf(12, -12),
-                intArrayOf(-12, 12), intArrayOf(12, 12),
-                intArrayOf(-18, 0), intArrayOf(18, 0),
-                intArrayOf(0, -18), intArrayOf(0, 18)
-            )
-            for (end in endpoints) {
-                for (dy in -52..52 step 8) for (dx in -52..52 step 8) {
-                    val cx = (end[0] + dx).toInt()
-                    val cy = (end[1] + dy).toInt()
-                    if (cx < w * bounds[0] + 24 || cx > w * bounds[2] - 24 ||
-                        cy < h * bounds[1] + 24 || cy > h * bounds[3] - 24) continue
-                    var whiteCount = 0
-                    for (offset in offsets) if (whiteAt(cx + offset[0], cy + offset[1])) whiteCount++
-                    val fraction = whiteCount.toDouble() / offsets.size
-                    val dist = hypot(dx.toDouble(), dy.toDouble())
-                    // Solid white ball beats a thin white guide crossing the sample.
-                    val score = fraction - dist * 0.0012
-                    if (fraction >= 0.77 && score > bestBallScore) {
+        var candidateCount = 0
+        // A coarse search across the entire playable cloth, then local refinement.
+        // We intentionally do not use the chosen red segment here.
+        if (landscape && minX < maxX && minY < maxY) {
+            for (cy in minY..maxY step 12) for (cx in minX..maxX step 12) {
+                // At least some white in the inner area is required.
+                if (!whiteAt(cx, cy) && !whiteAt(cx + 10, cy) &&
+                    !whiteAt(cx - 10, cy) && !whiteAt(cx, cy + 10)) continue
+                for (radius in radii) {
+                    val score = ballScore(cx, cy, radius)
+                    if (score > 0.0) candidateCount++
+                    if (score > bestBallScore) {
                         bestBallScore = score
                         cueX = cx.toFloat()
                         cueY = cy.toFloat()
                     }
                 }
             }
+            if (cueX != null && cueY != null) {
+                val bx = cueX!!.toInt()
+                val by = cueY!!.toInt()
+                for (cy in (by - 12)..(by + 12) step 2)
+                    for (cx in (bx - 12)..(bx + 12) step 2) {
+                        if (cx !in minX..maxX || cy !in minY..maxY) continue
+                        for (radius in radii) {
+                            val score = ballScore(cx, cy, radius)
+                            if (score > bestBallScore) {
+                                bestBallScore = score
+                                cueX = cx.toFloat()
+                                cueY = cy.toFloat()
+                            }
+                        }
+                    }
+            }
         }
+        // A weak hypothesis is less useful than no crosshair at all.
+        if (bestBallScore < 0.78) { cueX = null; cueY = null }
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Отрезки:${segments.size} Макс:${longestLength.roundToInt()}px " +
             "Длинная:${if (chosen != null) "кандидат" else "нет"} " +
-            "Биток:${if (cueX != null) "гипотеза" else "не найден"}"
+            "Биток:${if (cueX != null) "кандидат" else "не найден"} " +
+            "Оценка:${(bestBallScore * 100).roundToInt()} Круги:$candidateCount"
         return Result(summary, chosen?.let { listOf(it) } ?: emptyList(), w, h, cueX, cueY)
     }
 }

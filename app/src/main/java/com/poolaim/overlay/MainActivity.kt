@@ -31,7 +31,7 @@ class MainActivity : Activity() {
         })
         root.addView(Button(this).apply {
             text = "Остановить прицел"
-            setOnClickListener { stopService(Intent(this@MainActivity, AimService::class.java)) }
+            setOnClickListener { stopService(Intent(this@MainActivity, CaptureService::class.java)) }
         })
         setContentView(root)
 
@@ -39,9 +39,10 @@ class MainActivity : Activity() {
             if (!Settings.canDrawOverlays(this)) {
                 openOverlayPermissionSettings()
             } else {
-                val i = Intent(this, AimService::class.java)
-                if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
-                moveTaskToBack(true)
+                val manager = getSystemService(
+                    android.content.Context.MEDIA_PROJECTION_SERVICE
+                ) as android.media.projection.MediaProjectionManager
+                startActivityForResult(manager.createScreenCaptureIntent(), 501)
             }
         }
 
@@ -49,6 +50,28 @@ class MainActivity : Activity() {
         if (!Settings.canDrawOverlays(this)) {
             openOverlayPermissionSettings()
         }
+    }
+
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 501 || resultCode != RESULT_OK || data == null) return
+
+        val service = Intent(this, CaptureService::class.java).apply {
+            putExtra(CaptureService.EXTRA_RESULT_CODE, resultCode)
+            putExtra(CaptureService.EXTRA_RESULT_DATA, data)
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            startForegroundService(service)
+        } else {
+            startService(service)
+        }
+        moveTaskToBack(true)
     }
 
     private fun openOverlayPermissionSettings() {

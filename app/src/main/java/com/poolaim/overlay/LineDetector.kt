@@ -3,7 +3,7 @@ package com.poolaim.overlay
 import android.media.Image
 import kotlin.math.*
 
-/** Experimental connected-line diagnostics. Candidates are NOT identified ball trajectories. */
+/** Experimental geometric selection. The chosen line is only a hypothesis, not verified ball identification. */
 internal object LineDetector {
     data class Segment(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
     data class Result(val summary: String, val segments: List<Segment>, val width: Int, val height: Int)
@@ -60,10 +60,10 @@ internal object LineDetector {
         }
         // Keep only strong peaks, then split each line into connected runs.
         val peaks = votes.indices.asSequence().filter { votes[it] >= 7 }
-            .sortedByDescending { votes[it] }.take(110).toList()
+            .sortedByDescending { votes[it] }.take(180).toList()
         val segments = ArrayList<Segment>()
         for (index in peaks) {
-            if (segments.size >= 24) break
+            if (segments.size >= 120) break
             val a = index / rhoCount
             val rho = index % rhoCount - diag
             val nx = cosines[a]
@@ -119,14 +119,56 @@ internal object LineDetector {
                     }
                     if (!duplicate) segments.add(Segment(x1, y1, x2, y2))
                 }
-                if (segments.size >= 24) break
+                if (segments.size >= 120) break
                 start = i
             }
         }
-        // Diagnostic only: shorter candidates are included, but ball identity is not inferred.
-        val selected = segments.sortedBy { s ->
-            hypot((s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble())
-        }.take(8)
-        return Result("Размер:${w}x${h} Шаг:$step Белые:$white Кандидаты:${selected.size} (короткие)", selected, w, h)
+        // Conservative geometry test: a short object-ball guide should be near
+        // an endpoint of a long aiming guide, with a different direction.
+        // No line is shown if the relationship is not sufficiently clear.
+        fun length(s: Segment): Double = hypot(
+            (s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble())
+        fun distance(ax: Float, ay: Float, bx: Float, by: Float): Double =
+            hypot((ax - bx).toDouble(), (ay - by).toDouble())
+
+        val longLines = segments.filter { length(it) >= 180.0 }
+            .sortedByDescending { length(it) }.take(12)
+        val shortLines = segments.filter { length(it) in 28.0..170.0 }
+        var best: Segment? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+        for (longLine in longLines) {
+            val ll = length(longLine)
+            for (shortLine in shortLines) {
+                val sl = length(shortLine)
+                val cosine = abs(((longLine.x2 - longLine.x1) *
+                    (shortLine.x2 - shortLine.x1) +
+                    (longLine.y2 - longLine.y1) *
+                    (shortLine.y2 - shortLine.y1)) / (ll * sl))
+                // Reject parallel fragments of the cue's long guide.
+                if (cosine > 0.94) continue
+                val ends = arrayOf(
+                    floatArrayOf(longLine.x1, longLine.y1),
+                    floatArrayOf(longLine.x2, longLine.y2)
+                )
+                for (end in ends) {
+                    val d1 = distance(end[0], end[1], shortLine.x1, shortLine.y1)
+                    val d2 = distance(end[0], end[1], shortLine.x2, shortLine.y2)
+                    val near = min(d1, d2)
+                    if (near > 105.0) continue
+                    // Prefer a short segment beginning near the collision area.
+                    val score = 200.0 - near * 2.0 + min(sl, 100.0) * 0.25 +
+                        min(ll, 600.0) * 0.03
+                    if (score > bestScore) {
+                        bestScore = score
+                        best = shortLine
+                    }
+                }
+            }
+        }
+        val selected = best?.let { listOf(it) } ?: emptyList()
+        val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
+            "Длинные:${longLines.size} Короткие:${shortLines.size} " +
+            "Цель:${if (best == null) "не найдена" else "гипотеза"}"
+        return Result(summary, selected, w, h)
     }
 }

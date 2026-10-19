@@ -186,10 +186,57 @@ internal object LineDetector {
             if (outerFraction > 0.32) return -1.0
             return innerFraction - outerFraction * 0.45
         }
+        // Cue evidence: the dark shaft must approach the candidate ball, while
+        // the white aiming guide must leave it on the opposite side.
+        fun shaftPixel(px: Int, py: Int): Boolean {
+            if (px !in 0 until w || py !in 0 until h) return false
+            val pos = py.toLong() * rowStride + px.toLong() * pixelStride
+            if (pos + 2 >= buffer.limit()) return false
+            val at = pos.toInt()
+            val r = buffer.get(at).toInt() and 255
+            val g = buffer.get(at + 1).toInt() and 255
+            val b = buffer.get(at + 2).toInt() and 255
+            return r < 120 && g < 110 && b < 125
+        }
+        fun cueAlignment(cx: Int, cy: Int): Double {
+            var strongest = 0.0
+            for (a in 0 until 36) {
+                val angle = a * PI / 18.0
+                val dx = cos(angle)
+                val dy = sin(angle)
+                var shaftHits = 0
+                var shaftNear = 0
+                var guideHits = 0
+                // Dark cue shaft is behind the ball; allow the tip gap.
+                for (d in 42..180 step 6) {
+                    val x = (cx - dx * d).roundToInt()
+                    val y = (cy - dy * d).roundToInt()
+                    if (shaftPixel(x, y)) {
+                        shaftHits++
+                        if (d <= 90) shaftNear++
+                    }
+                }
+                // White guide should be on the forward side.
+                for (d in 40..165 step 5) {
+                    if (whiteAt((cx + dx * d).roundToInt(),
+                                (cy + dy * d).roundToInt())) guideHits++
+                }
+                val shaftFraction = shaftHits / 24.0
+                val guideFraction = guideHits / 26.0
+                if (shaftNear >= 3 && shaftFraction >= 0.38 && guideFraction >= 0.25) {
+                    val confidence = shaftFraction * 0.55 + guideFraction * 0.45
+                    if (confidence > strongest) strongest = confidence
+                }
+            }
+            return strongest
+        }
         var cueX: Float? = null
         var cueY: Float? = null
         var bestBallScore = 0.0
         var candidateCount = 0
+        // Retain spatially distinct circles instead of just the brightest one.
+        data class BallCandidate(val x: Int, val y: Int, val score: Double)
+        val candidates = ArrayList<BallCandidate>()
         // A coarse search across the entire playable cloth, then local refinement.
         // We intentionally do not use the chosen red segment here.
         if (landscape && minX < maxX && minY < maxY) {
@@ -200,13 +247,32 @@ internal object LineDetector {
                 for (radius in radii) {
                     val score = ballScore(cx, cy, radius)
                     if (score > 0.0) candidateCount++
-                    if (score > bestBallScore) {
-                        bestBallScore = score
-                        cueX = cx.toFloat()
-                        cueY = cy.toFloat()
-                    }
+                    if (score >= 0.78) candidates.add(BallCandidate(cx, cy, score))
                 }
             }
+            // Limit expensive shaft checks to the strongest separated candidates.
+            val distinct = ArrayList<BallCandidate>()
+            for (candidate in candidates.sortedByDescending { it.score }) {
+                if (distinct.none { hypot((it.x - candidate.x).toDouble(),
+                            (it.y - candidate.y).toDouble()) < 48.0 }) {
+                    distinct.add(candidate)
+                    if (distinct.size >= 35) break
+                }
+            }
+            var bestCombined = 0.0
+            for (candidate in distinct) {
+                val alignment = cueAlignment(candidate.x, candidate.y)
+                if (alignment <= 0.0) continue
+                val combined = alignment * 0.8 + candidate.score * 0.2
+                if (combined > bestCombined) {
+                    bestCombined = combined
+                    bestBallScore = candidate.score
+                    cueX = candidate.x.toFloat()
+                    cueY = candidate.y.toFloat()
+                }
+            }
+            // Refine only the selected cue-aligned circle; keep the shaft test
+            // at coarse coordinates so tiny shifts do not erase the match.
             if (cueX != null && cueY != null) {
                 val bx = cueX!!.toInt()
                 val by = cueY!!.toInt()
@@ -229,7 +295,7 @@ internal object LineDetector {
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Отрезки:${segments.size} Макс:${longestLength.roundToInt()}px " +
             "Длинная:${if (chosen != null) "кандидат" else "нет"} " +
-            "Биток:${if (cueX != null) "кандидат" else "не найден"} " +
+            "Биток:${if (cueX != null) "кий+линия" else "не найден"} " +
             "Оценка:${(bestBallScore * 100).roundToInt()} Круги:$candidateCount"
         return Result(summary, chosen?.let { listOf(it) } ?: emptyList(), w, h, cueX, cueY)
     }

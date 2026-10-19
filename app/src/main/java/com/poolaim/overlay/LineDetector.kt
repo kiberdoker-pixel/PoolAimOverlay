@@ -123,14 +123,38 @@ internal object LineDetector {
                 start = i
             }
         }
-        // Experimental object-ball selection: prefer a short guide that goes
-        // FORWARD from the collision end of the long incoming guide.
-        // A cue-ball deflection is often more transverse. This is a heuristic,
-        // not yet a verified detection of either ball.
+        // Experimental ball-anchored selection. Still a hypothesis, not a verified
+        // object-ball detector. Prefer a short guide starting near a coloured ball.
         fun length(s: Segment): Double = hypot(
             (s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble())
         fun distance(ax: Float, ay: Float, bx: Float, by: Float): Double =
             hypot((ax - bx).toDouble(), (ay - by).toDouble())
+
+        // Estimate whether the neighbourhood contains a ball instead of blue cloth.
+        // Sampling around, not directly on, the bright guide avoids its white pixels.
+        fun ballEvidence(cx: Float, cy: Float): Double {
+            var coloured = 0
+            var sampled = 0
+            for (oy in -28..28 step 8) for (ox in -28..28 step 8) {
+                val rr = ox * ox + oy * oy
+                if (rr < 64 || rr > 784) continue
+                val px = (cx + ox).toInt()
+                val py = (cy + oy).toInt()
+                if (px !in 0 until w || py !in 0 until h) continue
+                val pos = py.toLong() * rowStride + px.toLong() * pixelStride
+                if (pos + 2 >= buffer.limit()) continue
+                val p = pos.toInt()
+                val r = buffer.get(p).toInt() and 255
+                val g = buffer.get(p + 1).toInt() and 255
+                val b = buffer.get(p + 2).toInt() and 255
+                val high = max(r, max(g, b))
+                val low = min(r, min(g, b))
+                val blueCloth = b > r * 1.18 && g > r * 1.12 && b > 90
+                if (high > 65 && high - low > 48 && !blueCloth) coloured++
+                sampled++
+            }
+            return if (sampled == 0) 0.0 else coloured.toDouble() / sampled
+        }
 
         val longLines = segments.filter { length(it) >= 180.0 }
             .sortedByDescending { length(it) }.take(12)
@@ -139,8 +163,6 @@ internal object LineDetector {
         var bestScore = Double.NEGATIVE_INFINITY
         for (longLine in longLines) {
             val ll = length(longLine)
-            // Test each endpoint as a possible collision point. The other
-            // endpoint is treated as the cue-ball side of the incoming guide.
             val endpoints = arrayOf(
                 floatArrayOf(longLine.x1, longLine.y1, longLine.x2, longLine.y2),
                 floatArrayOf(longLine.x2, longLine.y2, longLine.x1, longLine.y1)
@@ -153,19 +175,24 @@ internal object LineDetector {
                     val d1 = distance(end[0], end[1], shortLine.x1, shortLine.y1)
                     val d2 = distance(end[0], end[1], shortLine.x2, shortLine.y2)
                     val near = min(d1, d2)
-                    if (near > 105.0) continue
-                    // Orient the candidate AWAY from the collision area.
+                    if (near !in 22.0..125.0) continue
+                    val startX = if (d1 <= d2) shortLine.x1 else shortLine.x2
+                    val startY = if (d1 <= d2) shortLine.y1 else shortLine.y2
                     val dx = if (d1 <= d2) shortLine.x2 - shortLine.x1
                              else shortLine.x1 - shortLine.x2
                     val dy = if (d1 <= d2) shortLine.y2 - shortLine.y1
                              else shortLine.y1 - shortLine.y2
                     val forward = (dx * incomingX + dy * incomingY) / sl
-                    // Do not accept backward or strongly sideways fragments.
-                    if (forward < 0.30) continue
-                    // Avoid parallel fragments of the long incoming guide.
-                    if (forward > 0.97) continue
-                    val score = forward * 180.0 - near * 1.5 +
-                        min(sl, 100.0) * 0.20 + min(ll, 600.0) * 0.02
+                    if (forward < 0.15) continue
+                    // The target ball lies ahead of the collision marker. Cue-ball
+                    // deflection often starts right at that marker instead.
+                    val ahead = ((startX - end[0]) * incomingX +
+                        (startY - end[1]) * incomingY).toDouble()
+                    if (ahead < 12.0) continue
+                    val evidence = ballEvidence(startX, startY)
+                    if (evidence < 0.035) continue
+                    val score = evidence * 280.0 + forward * 55.0 -
+                        abs(near - 55.0) * 0.55 + min(sl, 100.0) * 0.12
                     if (score > bestScore) {
                         bestScore = score
                         best = shortLine
@@ -176,7 +203,7 @@ internal object LineDetector {
         val selected = best?.let { listOf(it) } ?: emptyList()
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Длинные:${longLines.size} Короткие:${shortLines.size} " +
-            "Цель:${if (best == null) "не найдена" else "гипотеза-вперёд"}"
+            "Цель:${if (best == null) "не найдена" else "гипотеза-шар"}"
         return Result(summary, selected, w, h)
     }
 }

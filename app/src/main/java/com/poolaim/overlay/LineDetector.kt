@@ -3,7 +3,7 @@ package com.poolaim.overlay
 import android.media.Image
 import kotlin.math.*
 
-/** Experimental visual diagnostics. Candidates are NOT identified ball trajectories. */
+/** Experimental connected-line diagnostics. Candidates are NOT identified ball trajectories. */
 internal object LineDetector {
     data class Segment(val x1: Float, val y1: Float, val x2: Float, val y2: Float)
     data class Result(val summary: String, val segments: List<Segment>, val width: Int, val height: Int)
@@ -63,43 +63,51 @@ internal object LineDetector {
                 if (rho in 0 until rhoCount) votes[a * rhoCount + rho]++
             }
         }
-        val peaks = votes.indices.filter { votes[it] >= 8 }
-            .sortedByDescending { votes[it] }.take(100)
+        // Keep only strong peaks, then split each line into connected runs.
+        val peaks = votes.indices.asSequence().filter { votes[it] >= 10 }
+            .sortedByDescending { votes[it] }.take(60).toList()
         val segments = ArrayList<Segment>()
         for (index in peaks) {
-            if (segments.size >= 12) break
+            if (segments.size >= 8) break
             val a = index / rhoCount
             val rho = index % rhoCount - diag
             val nx = cosines[a]
             val ny = sines[a]
             val tx = -ny
             val ty = nx
-            var minT = Double.POSITIVE_INFINITY
-            var maxT = Double.NEGATIVE_INFINITY
-            var hits = 0
+            val positions = ArrayList<Double>()
             for (y in 0 until rows) for (x in 0 until cols) {
                 if (!bright[y * cols + x]) continue
-                if (abs(x * nx + y * ny - rho) > 1.15) continue
-                val t = x * tx + y * ty
-                minT = min(minT, t)
-                maxT = max(maxT, t)
-                hits++
+                if (abs(x * nx + y * ny - rho) > 1.0) continue
+                positions.add(x * tx + y * ty)
             }
-            if (hits < 8 || maxT - minT < 12.0) continue
-            // Reject isolated dots accidentally aligned across a large region.
-            if (hits.toDouble() / (maxT - minT + 1.0) < 0.18) continue
-            val x1 = ((rho * nx + minT * tx) * step).toFloat()
-            val y1 = ((rho * ny + minT * ty) * step).toFloat()
-            val x2 = ((rho * nx + maxT * tx) * step).toFloat()
-            val y2 = ((rho * ny + maxT * ty) * step).toFloat()
-            val duplicate = segments.any { s ->
-                val d1 = hypot((s.x1 - x1).toDouble(), (s.y1 - y1).toDouble()) +
-                    hypot((s.x2 - x2).toDouble(), (s.y2 - y2).toDouble())
-                val d2 = hypot((s.x1 - x2).toDouble(), (s.y1 - y2).toDouble()) +
-                    hypot((s.x2 - x1).toDouble(), (s.y2 - y1).toDouble())
-                min(d1, d2) < 55.0
+            if (positions.size < 10) continue
+            positions.sort()
+            var start = 0
+            for (i in 1..positions.size) {
+                val endRun = i == positions.size || positions[i] - positions[i - 1] > 3.0
+                if (!endRun) continue
+                val count = i - start
+                val minT = positions[start]
+                val maxT = positions[i - 1]
+                val length = maxT - minT
+                if (count >= 9 && length >= 14.0 && count / (length + 1.0) >= 0.48) {
+                    val x1 = ((rho * nx + minT * tx) * step).toFloat()
+                    val y1 = ((rho * ny + minT * ty) * step).toFloat()
+                    val x2 = ((rho * nx + maxT * tx) * step).toFloat()
+                    val y2 = ((rho * ny + maxT * ty) * step).toFloat()
+                    val duplicate = segments.any { s ->
+                        val d1 = hypot((s.x1 - x1).toDouble(), (s.y1 - y1).toDouble()) +
+                            hypot((s.x2 - x2).toDouble(), (s.y2 - y2).toDouble())
+                        val d2 = hypot((s.x1 - x2).toDouble(), (s.y1 - y2).toDouble()) +
+                            hypot((s.x2 - x1).toDouble(), (s.y2 - y1).toDouble())
+                        min(d1, d2) < 55.0
+                    }
+                    if (!duplicate) segments.add(Segment(x1, y1, x2, y2))
+                }
+                if (segments.size >= 8) break
+                start = i
             }
-            if (!duplicate) segments.add(Segment(x1, y1, x2, y2))
         }
         return Result("Размер:${w}x${h} Шаг:$step Белые:$white Кандидаты:${segments.size}", segments, w, h)
     }

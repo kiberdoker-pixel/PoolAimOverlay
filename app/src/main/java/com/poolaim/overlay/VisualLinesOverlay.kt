@@ -61,24 +61,43 @@ internal class VisualLinesOverlay(private val context: Context) {
             result = value
             invalidate()
         }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val r = result ?: return
             if (r.width <= 0 || r.height <= 0) return
+
+            val guide = r.segments.firstOrNull() ?: return
+            val bounds = TableBoundsOverlay.bounds
+
+            val points = TargetBallTrajectory.calculate(
+                start = TargetBallTrajectory.Point(guide.x2, guide.y2),
+                direction = TargetBallTrajectory.Point(
+                    guide.x2 - guide.x1,
+                    guide.y2 - guide.y1
+                ),
+                left = bounds[0] * r.width,
+                top = bounds[1] * r.height,
+                right = bounds[2] * r.width,
+                bottom = bounds[3] * r.height,
+                maxBounces = 3
+            )
+
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
-            for (s in r.segments) {
-                canvas.drawLine(s.x1 * sx, s.y1 * sy, s.x2 * sx, s.y2 * sy, paint)
-            }
-            val cx = r.cueX
-            val cy = r.cueY
-            if (cx != null && cy != null) {
-                val x = cx * sx
-                val y = cy * sy
-                val arm = 12f * resources.displayMetrics.density
-                canvas.drawLine(x - arm, y, x + arm, y, cuePaint)
-                canvas.drawLine(x, y - arm, x, y + arm, cuePaint)
+
+            paint.color = Color.CYAN
+
+            for (i in 0 until points.size - 1) {
+                canvas.drawLine(
+                    points[i].x * sx,
+                    points[i].y * sy,
+                    points[i + 1].x * sx,
+                    points[i + 1].y * sy,
+                    paint
+                )
             }
         }
+
     }
 }

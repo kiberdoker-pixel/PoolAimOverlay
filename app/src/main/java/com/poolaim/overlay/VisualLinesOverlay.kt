@@ -67,6 +67,8 @@ internal class VisualLinesOverlay(private val context: Context) {
             val r = result ?: return
             if (r.width <= 0 || r.height <= 0) return
 
+            // Do not draw a trajectory without a detected cue ball.
+            if (r.cueX == null || r.cueY == null) return
             val guide = r.segments.firstOrNull() ?: return
             val bounds = TableBoundsOverlay.bounds
 

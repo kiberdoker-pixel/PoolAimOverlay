@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.widget.LinearLayout
 import android.widget.Button
 import android.widget.TextView
@@ -28,6 +29,17 @@ class ModelProbeActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // Android 15 edge-to-edge: keep controls below the status bar.
+        root.setOnApplyWindowInsetsListener { view, insets ->
+            @Suppress("DEPRECATION")
+            val top = if (android.os.Build.VERSION.SDK_INT >= 30) {
+                insets.getInsets(WindowInsets.Type.statusBars()).top
+            } else {
+                insets.systemWindowInsetTop
+            }
+            view.setPadding(0, top, 0, 0)
+            insets
+        }
         info = TextView(this).apply { text = "Выбери оригинальный скриншот 8 Ball Pool, затем коснись центра шара. Это тест классификатора, НЕ поиск шаров."; textSize = 16f; setPadding(16,16,16,16) }
         root.addView(info)
         root.addView(Button(this).apply { text = "Выбрать скриншот"; setOnClickListener {

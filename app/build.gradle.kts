@@ -5,3 +5,10 @@ android { namespace = "com.poolaim.overlay"; compileSdk = 35
 
 
 dependencies { implementation("org.pytorch:pytorch_android_lite:1.13.1") }
+
+android {
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}

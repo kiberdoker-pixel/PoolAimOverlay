@@ -4,6 +4,8 @@ import android.app.*
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
+import android.graphics.Bitmap
+import android.media.Image
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -29,6 +31,7 @@ class CaptureService : Service() {
     private var frameCount = 0L
     private var stopping = false
     private var startedForeground = false
+    private var detectorResult = "Анализ ещё не выполнялся"
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -103,8 +106,16 @@ class CaptureService : Service() {
                 if (image != null) {
                     try {
                         frameCount++
+                        if (frameCount % 15L == 0L) {
+                            try {
+                                detectorResult = LineDetector.inspect(image)
+                            } catch (e: Exception) {
+                                detectorResult = "Ошибка анализа: ${e.javaClass.simpleName}"
+                                android.util.Log.e("AimXDetector", "Analysis failed", e)
+                            }
+                        }
                         if (frameCount == 1L || frameCount % 30L == 0L) {
-                            val msg = "Захват работает · кадров: $frameCount"
+                            val msg = "Кадров: $frameCount · $detectorResult"
                             report(msg)
                             getSystemService(NotificationManager::class.java)
                                 .notify(NOTIFICATION_ID, notification(msg))

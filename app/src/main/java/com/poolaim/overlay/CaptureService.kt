@@ -12,6 +12,7 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.*
+import android.provider.Settings
 import android.view.WindowManager
 
 class CaptureService : Service() {
@@ -32,6 +33,8 @@ class CaptureService : Service() {
     private var stopping = false
     private var startedForeground = false
     private var detectorResult = "Анализ ещё не выполнялся"
+    private var overlay: DiagnosticOverlay? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -74,6 +77,15 @@ class CaptureService : Service() {
                 startForeground(NOTIFICATION_ID, notification("Подключение…"))
             }
             startedForeground = true
+            if (Settings.canDrawOverlays(this)) {
+                mainHandler.post {
+                    try {
+                        if (overlay == null) overlay = DiagnosticOverlay(this).also { it.show() }
+                    } catch (e: Exception) {
+                        android.util.Log.e("AimXOverlay", "Cannot show overlay", e)
+                    }
+                }
+            }
             report("Служба запущена · ожидаем разрешение")
             val data = if (Build.VERSION.SDK_INT >= 33)
                 intent?.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -117,6 +129,7 @@ class CaptureService : Service() {
                         if (frameCount == 1L || frameCount % 30L == 0L) {
                             val msg = "Кадров: $frameCount · $detectorResult"
                             report(msg)
+                            mainHandler.post { overlay?.update(msg) }
                             getSystemService(NotificationManager::class.java)
                                 .notify(NOTIFICATION_ID, notification(msg))
                         }
@@ -139,6 +152,7 @@ class CaptureService : Service() {
     }
 
     override fun onDestroy() {
+        mainHandler.post { overlay?.hide(); overlay = null }
         if (!stopping) {
             stopping = true
             reader?.setOnImageAvailableListener(null, null)

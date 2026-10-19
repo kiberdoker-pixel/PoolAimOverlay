@@ -173,6 +173,25 @@ internal object LineDetector {
             for (end in endpoints) {
                 val incomingX = (end[0] - end[2]) / ll
                 val incomingY = (end[1] - end[3]) / ll
+                // Estimate the object-ball centre on the forward side of the impact.
+                // Search a small region, not only the beginning of a guide segment.
+                var ballX = Float.NaN
+                var ballY = Float.NaN
+                var ballStrength = 0.0
+                val sideX = -incomingY
+                val sideY = incomingX
+                for (along in 24..80 step 8) for (side in -40..40 step 8) {
+                    val cx = (end[0] + incomingX * along + sideX * side).toFloat()
+                    val cy = (end[1] + incomingY * along + sideY * side).toFloat()
+                    val evidence = ballEvidence(cx, cy)
+                    // Bias towards plausible ball centres just ahead of impact.
+                    val quality = evidence - abs(side) * 0.0012 - abs(along - 43) * 0.0006
+                    if (quality > ballStrength && evidence >= 0.055) {
+                        ballStrength = quality
+                        ballX = cx
+                        ballY = cy
+                    }
+                }
                 for (shortLine in shortLines) {
                     val sl = length(shortLine)
                     val d1 = distance(end[0], end[1], shortLine.x1, shortLine.y1)
@@ -198,9 +217,28 @@ internal object LineDetector {
                     val evidence = ballEvidence(startX, startY)
                     // Colour evidence is a preference, not a hard rejection: striped
                     // and pale object balls may have very little saturated colour.
-                    val score = evidence * 65.0 + forward * 65.0 +
-                        ahead.coerceIn(-22.0, 90.0) * 0.30 -
-                        abs(near - 40.0) * 0.40 + min(sl, 100.0) * 0.12
+                    // A true object-ball guide should follow the radial direction
+                    // from impact towards the object-ball centre. Penalise lateral
+                    // offsets instead of rewarding only a forward-pointing segment.
+                    var anchorBonus = 0.0
+                    if (!ballX.isNaN() && !ballY.isNaN()) {
+                        val vx = (ballX - end[0]).toDouble()
+                        val vy = (ballY - end[1]).toDouble()
+                        val vl = hypot(vx, vy)
+                        if (vl > 8.0) {
+                            val radial = (dx * vx + dy * vy) / (sl * vl)
+                            val perpendicular = abs((ballX - startX) * dy -
+                                (ballY - startY) * dx) / sl
+                            val startToBall = distance(startX, startY, ballX, ballY)
+                            anchorBonus = radial * 72.0 -
+                                perpendicular.coerceAtMost(85.0) * 1.5 -
+                                max(0.0, startToBall - 35.0) * 0.42
+                        }
+                    }
+                    val score = evidence * 25.0 + forward * 22.0 +
+                        ahead.coerceIn(-22.0, 90.0) * 0.18 -
+                        abs(near - 40.0) * 0.30 + min(sl, 100.0) * 0.10 +
+                        anchorBonus
                     if (score > bestScore) {
                         bestScore = score
                         best = shortLine
@@ -212,7 +250,7 @@ internal object LineDetector {
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Длинные:${longLines.size} Короткие:${shortLines.size} " +
             "Рядом:$nearbyCount Вперёд:$forwardCount Перед:$aheadCount " +
-            "Цель:${if (best == null) "не найдена" else "гипотеза-шар"}"
+            "Цель:${if (best == null) "не найдена" else "гипотеза-центр"}"
         return Result(summary, selected, w, h)
     }
 }

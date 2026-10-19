@@ -95,6 +95,6 @@ internal object LineDetector {
             }
             if (!duplicate) segments.add(Segment(x1, y1, x2, y2))
         }
-        return Result("Бирюза:$turquoise Белые:$white Кандидаты:${segments.size}", segments, w, h)
+        return Result("Размер:${w}x${h} Шаг:$step Белые:$white Кандидаты:${segments.size}", segments, w, h)
     }
 }

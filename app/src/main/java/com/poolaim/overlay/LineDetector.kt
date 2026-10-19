@@ -16,7 +16,7 @@ internal object LineDetector {
         val rowStride = plane.rowStride
         if (w < 1 || h < 1 || pixelStride < 4) return Result("Неверный формат", emptyList(), w, h)
         val buffer = plane.buffer.duplicate()
-        val step = max(2, max(w / 550, h / 300))
+        val step = 4 // Diagnostic sampling: finer than the previous 10px
         val cols = (w + step - 1) / step
         val rows = (h + step - 1) / step
         val bright = BooleanArray(cols * rows)
@@ -37,8 +37,14 @@ internal object LineDetector {
                 val isWhite = r > 175 && g > 175 && b > 175 &&
                     max(r, max(g, b)) - min(r, min(g, b)) < 65
                 if (isWhite) white++
-                val inside = landscape && px > w * .19f && px < w * .81f &&
-                    py > h * .21f && py < h * .92f
+                val inside = if (landscape) {
+                    px > w * .19f && px < w * .81f &&
+                        py > h * .21f && py < h * .92f
+                } else {
+                    // Capture may report portrait dimensions even while the game is landscape.
+                    px > w * .06f && px < w * .94f &&
+                        py > h * .06f && py < h * .94f
+                }
                 bright[y * cols + x] = inside && isWhite
             }
         }

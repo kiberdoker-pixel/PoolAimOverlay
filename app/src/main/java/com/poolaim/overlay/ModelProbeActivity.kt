@@ -26,6 +26,7 @@ class ModelProbeActivity : Activity() {
     private var model: PytorchLiteAdapter? = null
     private var generation = 0
     private var imagePixels: IntArray? = null
+    private var detected = emptyList<ScoredProposal>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -46,6 +47,7 @@ class ModelProbeActivity : Activity() {
             val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*"; addCategory(Intent.CATEGORY_OPENABLE) }
             startActivityForResult(intent, 100)
         } })
+        root.addView(Button(this).apply { text = "НАЙТИ ШАРЫ АВТОМАТИЧЕСКИ (ЭКСПЕРИМЕНТ)"; setOnClickListener { autoScan() } })
         imageView = ProbeView()
         root.addView(imageView, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
@@ -69,9 +71,33 @@ class ModelProbeActivity : Activity() {
             image = bitmap.copy(Bitmap.Config.ARGB_8888, false)
             imagePixels = IntArray(image!!.width * image!!.height).also { image!!.getPixels(it, 0, image!!.width, 0, 0, image!!.width, image!!.height) }
             generation++
+            detected = emptyList()
             imageView.invalidate()
             info.text = "Скриншот ${bitmap.width}×${bitmap.height}. Коснись центра шара."
         } catch (e: Exception) { info.text = "Ошибка изображения: ${e.message}" }
+    }
+    private fun autoScan() {
+        val b = image ?: run { info.text = "Сначала выбери скриншот"; return }
+        val pixels = imagePixels ?: return
+        val version = ++generation
+        info.text = "Ищу кандидатов и проверяю нейросетью…"
+        executor.execute {
+            try {
+                val m = model ?: error("Модель ещё загружается")
+                val proposals = AutoBallProposals.find(pixels, b.width, b.height)
+                // Restrict inference count to avoid prolonged UI wait on phones.
+                val scores = PatchBallClassifier(m, threshold = 0.80f).score(pixels, b.width, b.height, proposals)
+                runOnUiThread {
+                    if (version == generation) {
+                        detected = scores
+                        imageView.invalidate()
+                        info.text = "Кандидатов: ${proposals.size}; модель приняла: ${scores.size}. Эксперимент: возможны пропуски и ложные срабатывания."
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { if (version == generation) info.text = "Ошибка автопоиска: ${e.message}" }
+            }
+        }
     }
     private inner class ProbeView : View(this@ModelProbeActivity) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -82,6 +108,14 @@ class ModelProbeActivity : Activity() {
             val scale = minOf(width.toFloat() / b.width, height.toFloat() / b.height)
             val left = (width - b.width * scale) / 2f; val top = (height - b.height * scale) / 2f
             canvas.drawBitmap(b, null, android.graphics.RectF(left,top,left+b.width*scale,top+b.height*scale), paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f
+            paint.color = Color.GREEN
+            for (hit in detected) {
+                val p = hit.proposal
+                canvas.drawCircle(left+p.x*scale, top+p.y*scale, 27f * (b.width / 3200f).coerceAtLeast(.25f)*scale, paint)
+            }
+            paint.style = Paint.Style.FILL
             if (markerX >= 0f) { paint.color = Color.MAGENTA; paint.style = Paint.Style.STROKE; paint.strokeWidth = 4f; canvas.drawCircle(left+markerX*scale,top+markerY*scale,42f*scale,paint); paint.style = Paint.Style.FILL; paint.color = Color.WHITE }
         }
         override fun onTouchEvent(event: MotionEvent): Boolean {

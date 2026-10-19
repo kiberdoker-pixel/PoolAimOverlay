@@ -246,11 +246,22 @@ internal object LineDetector {
                 }
             }
         }
-        val selected = best?.let { listOf(it) } ?: emptyList()
+        // Diagnostic fallback: display one real detected segment even when the
+        // geometric object-ball hypothesis cannot be established.
+        // It is NOT a verified target-ball trajectory.
+        val fallback = if (best == null) {
+            longLines.firstOrNull() ?: shortLines.maxByOrNull { length(it) }
+        } else null
+        val selected = (best ?: fallback)?.let { listOf(it) } ?: emptyList()
+        val status = when {
+            best != null -> "гипотеза-центр"
+            fallback != null -> "диагностика"
+            else -> "не найдена"
+        }
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Длинные:${longLines.size} Короткие:${shortLines.size} " +
             "Рядом:$nearbyCount Вперёд:$forwardCount Перед:$aheadCount " +
-            "Цель:${if (best == null) "не найдена" else "гипотеза-центр"}"
+            "Цель:$status"
         return Result(summary, selected, w, h)
     }
 }

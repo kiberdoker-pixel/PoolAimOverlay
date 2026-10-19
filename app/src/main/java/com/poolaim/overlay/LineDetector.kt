@@ -59,11 +59,11 @@ internal object LineDetector {
             }
         }
         // Keep only strong peaks, then split each line into connected runs.
-        val peaks = votes.indices.asSequence().filter { votes[it] >= 10 }
-            .sortedByDescending { votes[it] }.take(60).toList()
+        val peaks = votes.indices.asSequence().filter { votes[it] >= 7 }
+            .sortedByDescending { votes[it] }.take(110).toList()
         val segments = ArrayList<Segment>()
         for (index in peaks) {
-            if (segments.size >= 8) break
+            if (segments.size >= 24) break
             val a = index / rhoCount
             val rho = index % rhoCount - diag
             val nx = cosines[a]
@@ -76,7 +76,7 @@ internal object LineDetector {
                 if (abs(x * nx + y * ny - rho) > 1.0) continue
                 positions.add(x * tx + y * ty)
             }
-            if (positions.size < 10) continue
+            if (positions.size < 7) continue
             positions.sort()
             var start = 0
             for (i in 1..positions.size) {
@@ -86,7 +86,7 @@ internal object LineDetector {
                 val minT = positions[start]
                 val maxT = positions[i - 1]
                 val length = maxT - minT
-                if (count >= 9 && length >= 14.0 && count / (length + 1.0) >= 0.48) {
+                if (count >= 6 && length >= 7.0 && count / (length + 1.0) >= 0.55) {
                     val x1 = ((rho * nx + minT * tx) * step).toFloat()
                     val y1 = ((rho * ny + minT * ty) * step).toFloat()
                     val x2 = ((rho * nx + maxT * tx) * step).toFloat()
@@ -96,14 +96,37 @@ internal object LineDetector {
                             hypot((s.x2 - x2).toDouble(), (s.y2 - y2).toDouble())
                         val d2 = hypot((s.x1 - x2).toDouble(), (s.y1 - y2).toDouble()) +
                             hypot((s.x2 - x1).toDouble(), (s.y2 - y1).toDouble())
-                        min(d1, d2) < 55.0
+                        val sameEndpoints = min(d1, d2) < 55.0
+                        val adx = x2 - x1
+                        val ady = y2 - y1
+                        val bdx = s.x2 - s.x1
+                        val bdy = s.y2 - s.y1
+                        val al = hypot(adx.toDouble(), ady.toDouble())
+                        val bl = hypot(bdx.toDouble(), bdy.toDouble())
+                        val parallel = al > 0 && bl > 0 &&
+                            abs((adx * bdx + ady * bdy) / (al * bl)) > 0.985
+                        val mx = (x1 + x2) / 2.0
+                        val my = (y1 + y2) / 2.0
+                        val bx = (s.x1 + s.x2) / 2.0
+                        val by = (s.y1 + s.y2) / 2.0
+                        val separation = if (bl > 0) abs((mx - bx) * bdy - (my - by) * bdx) / bl else 1e9
+                        val overlap = if (bl > 0) {
+                            val t1 = ((x1 - s.x1) * bdx + (y1 - s.y1) * bdy) / bl
+                            val t2 = ((x2 - s.x1) * bdx + (y2 - s.y1) * bdy) / bl
+                            max(0.0, min(max(t1, t2), bl) - max(min(t1, t2), 0.0))
+                        } else 0.0
+                        sameEndpoints || (parallel && separation < 12.0 && overlap > min(al, bl) * 0.5)
                     }
                     if (!duplicate) segments.add(Segment(x1, y1, x2, y2))
                 }
-                if (segments.size >= 8) break
+                if (segments.size >= 24) break
                 start = i
             }
         }
-        return Result("Размер:${w}x${h} Шаг:$step Белые:$white Кандидаты:${segments.size}", segments, w, h)
+        // Diagnostic only: shorter candidates are included, but ball identity is not inferred.
+        val selected = segments.sortedBy { s ->
+            hypot((s.x2 - s.x1).toDouble(), (s.y2 - s.y1).toDouble())
+        }.take(8)
+        return Result("Размер:${w}x${h} Шаг:$step Белые:$white Кандидаты:${selected.size} (короткие)", selected, w, h)
     }
 }

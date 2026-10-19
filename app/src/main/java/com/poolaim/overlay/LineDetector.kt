@@ -159,6 +159,9 @@ internal object LineDetector {
         val longLines = segments.filter { length(it) >= 180.0 }
             .sortedByDescending { length(it) }.take(12)
         val shortLines = segments.filter { length(it) in 28.0..170.0 }
+        var nearbyCount = 0
+        var forwardCount = 0
+        var aheadCount = 0
         var best: Segment? = null
         var bestScore = Double.NEGATIVE_INFINITY
         for (longLine in longLines) {
@@ -175,7 +178,8 @@ internal object LineDetector {
                     val d1 = distance(end[0], end[1], shortLine.x1, shortLine.y1)
                     val d2 = distance(end[0], end[1], shortLine.x2, shortLine.y2)
                     val near = min(d1, d2)
-                    if (near !in 22.0..125.0) continue
+                    if (near > 135.0) continue
+                    nearbyCount++
                     val startX = if (d1 <= d2) shortLine.x1 else shortLine.x2
                     val startY = if (d1 <= d2) shortLine.y1 else shortLine.y2
                     val dx = if (d1 <= d2) shortLine.x2 - shortLine.x1
@@ -183,16 +187,20 @@ internal object LineDetector {
                     val dy = if (d1 <= d2) shortLine.y2 - shortLine.y1
                              else shortLine.y1 - shortLine.y2
                     val forward = (dx * incomingX + dy * incomingY) / sl
-                    if (forward < 0.15) continue
+                    if (forward < 0.05) continue
+                    forwardCount++
                     // The target ball lies ahead of the collision marker. Cue-ball
                     // deflection often starts right at that marker instead.
                     val ahead = ((startX - end[0]) * incomingX +
                         (startY - end[1]) * incomingY).toDouble()
-                    if (ahead < 12.0) continue
+                    if (ahead < -22.0) continue
+                    aheadCount++
                     val evidence = ballEvidence(startX, startY)
-                    if (evidence < 0.035) continue
-                    val score = evidence * 280.0 + forward * 55.0 -
-                        abs(near - 55.0) * 0.55 + min(sl, 100.0) * 0.12
+                    // Colour evidence is a preference, not a hard rejection: striped
+                    // and pale object balls may have very little saturated colour.
+                    val score = evidence * 65.0 + forward * 65.0 +
+                        ahead.coerceIn(-22.0, 90.0) * 0.30 -
+                        abs(near - 40.0) * 0.40 + min(sl, 100.0) * 0.12
                     if (score > bestScore) {
                         bestScore = score
                         best = shortLine
@@ -203,6 +211,7 @@ internal object LineDetector {
         val selected = best?.let { listOf(it) } ?: emptyList()
         val summary = "Размер:${w}x${h} Шаг:$step Белые:$white " +
             "Длинные:${longLines.size} Короткие:${shortLines.size} " +
+            "Рядом:$nearbyCount Вперёд:$forwardCount Перед:$aheadCount " +
             "Цель:${if (best == null) "не найдена" else "гипотеза-шар"}"
         return Result(summary, selected, w, h)
     }

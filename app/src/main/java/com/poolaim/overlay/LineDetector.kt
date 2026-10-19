@@ -80,13 +80,13 @@ internal object LineDetector {
             positions.sort()
             var start = 0
             for (i in 1..positions.size) {
-                val endRun = i == positions.size || positions[i] - positions[i - 1] > 3.0
+                val endRun = i == positions.size || positions[i] - positions[i - 1] > 8.0
                 if (!endRun) continue
                 val count = i - start
                 val minT = positions[start]
                 val maxT = positions[i - 1]
                 val length = maxT - minT
-                if (count >= 6 && length >= 7.0 && count / (length + 1.0) >= 0.55) {
+                if (count >= 6 && length >= 7.0 && count / (length + 1.0) >= 0.30) {
                     val x1 = ((rho * nx + minT * tx) * step).toFloat()
                     val y1 = ((rho * ny + minT * ty) * step).toFloat()
                     val x2 = ((rho * nx + maxT * tx) * step).toFloat()
@@ -156,9 +156,9 @@ internal object LineDetector {
             return if (sampled == 0) 0.0 else coloured.toDouble() / sampled
         }
 
-        val longLines = segments.filter { length(it) >= 180.0 }
+        val longLines = segments.filter { length(it) >= 145.0 }
             .sortedByDescending { length(it) }.take(12)
-        val shortLines = segments.filter { length(it) in 28.0..170.0 }
+        val shortLines = segments.filter { length(it) in 28.0..140.0 }
         var nearbyCount = 0
         var forwardCount = 0
         var aheadCount = 0

@@ -64,9 +64,17 @@ internal class VisualLinesOverlay(private val context: Context) {
         fun update(value: FrameGuideResult, capturedAtMs: Long) {
             removeCallbacks(expire)
             val age = SystemClock.elapsedRealtime() - capturedAtMs
-            result = if (age in 0 until MAX_AGE_MS) value else null
-            capturedAt = capturedAtMs
-            if (result?.guide != null) postDelayed(expire, MAX_AGE_MS - age)
+            // An unconfirmed frame must not immediately erase a confirmed path.
+            if (value.guide != null && age in 0 until MAX_AGE_MS) {
+                result = value
+                capturedAt = capturedAtMs
+            } else if (result != null && SystemClock.elapsedRealtime() - capturedAt >= MAX_AGE_MS) {
+                result = null
+            }
+            if (result?.guide != null) {
+                val remaining = MAX_AGE_MS - (SystemClock.elapsedRealtime() - capturedAt)
+                if (remaining > 0) postDelayed(expire, remaining)
+            }
             invalidate()
         }
 

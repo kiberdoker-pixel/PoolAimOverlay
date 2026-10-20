@@ -12,6 +12,9 @@ import android.media.projection.MediaProjectionManager
 import android.os.*
 import android.provider.Settings
 import android.view.WindowManager
+import com.poolaim.overlay.recognition.FrameGuideResult
+import com.poolaim.overlay.recognition.GuideStabilityGate
+import com.poolaim.overlay.recognition.OpenCvGuideRecognizer
 
 class CaptureService : Service() {
     companion object {
@@ -32,13 +35,16 @@ class CaptureService : Service() {
     private var captureDensity = 0
     private var captureHandler: Handler? = null
     private var frameCount = 0L
-    private var stopping = false
+    @Volatile private var stopping = false
     private var startedForeground = false
     private var detectorResult = "Анализ ещё не выполнялся"
     private var overlay: DiagnosticOverlay? = null
     private var visualOverlay: VisualLinesOverlay? = null
     private var tableOverlay: TableBoundsOverlay? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val guideRecognizer = OpenCvGuideRecognizer()
+    private val guideGate = GuideStabilityGate()
+    private var lastAnalysisAt = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -149,14 +155,28 @@ class CaptureService : Service() {
                 if (image != null) {
                     try {
                         frameCount++
-                        if (frameCount % 15L == 0L) {
+                        val capturedAt = SystemClock.elapsedRealtime()
+                        if (!stopping && capturedAt - lastAnalysisAt >= 120L) {
+                            lastAnalysisAt = capturedAt
                             try {
-                                val detected = LineDetector.inspect(image)
-                                detectorResult = detected.summary
-                                mainHandler.post { visualOverlay?.update(detected) }
+                                val bounds = TableBoundsOverlay.snapshot()
+                                val detected = if (TableBoundsOverlay.editing) {
+                                    guideGate.reset()
+                                    FrameGuideResult(image.width, image.height, bounds,
+                                        reason = "Настройка границ стола · прогноз скрыт")
+                                } else {
+                                    guideGate.filter(guideRecognizer.inspect(image, bounds), capturedAt)
+                                }
+                                detectorResult = detected.reason
+                                mainHandler.post {
+                                    if (!stopping) visualOverlay?.update(detected, capturedAt)
+                                }
                             } catch (e: Exception) {
-                                detectorResult = "Ошибка анализа: ${e.javaClass.simpleName}"
+                                clearRecognition("Ошибка анализа: ${e.javaClass.simpleName}", image.width, image.height)
                                 android.util.Log.e("AimXDetector", "Analysis failed", e)
+                            } catch (e: LinkageError) {
+                                clearRecognition("OpenCV недоступна · прогноз скрыт", image.width, image.height)
+                                android.util.Log.e("AimXDetector", "OpenCV initialization failed", e)
                             }
                         }
                         if (frameCount == 1L || frameCount % 30L == 0L) {
@@ -170,6 +190,13 @@ class CaptureService : Service() {
                 }
             }, handler)
         }
+
+    private fun clearRecognition(message: String, width: Int, height: Int) {
+        guideGate.reset()
+        detectorResult = message
+        val empty = FrameGuideResult(width, height, TableBoundsOverlay.snapshot(), reason = message)
+        mainHandler.post { if (!stopping) visualOverlay?.update(empty, SystemClock.elapsedRealtime()) }
+    }
 
     // Android 15: MediaProjection is single-use. Resize the existing virtual display;
     // do NOT request another projection or create another virtual display on rotation.
@@ -196,10 +223,7 @@ class CaptureService : Service() {
                         captureWidth = newWidth
                         captureHeight = newHeight
                         captureDensity = newDensity
-                        detectorResult = "Поворот: ${newWidth}x${newHeight} · ожидаем анализ"
-                        mainHandler.post {
-                            visualOverlay?.update(LineDetector.Result("", emptyList(), newWidth, newHeight))
-                        }
+                        clearRecognition("Поворот: ${newWidth}x${newHeight} · ожидаем анализ", newWidth, newHeight)
                         report(detectorResult)
                     }
                 }

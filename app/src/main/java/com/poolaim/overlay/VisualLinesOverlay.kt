@@ -6,11 +6,13 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import com.poolaim.overlay.recognition.FrameGuideResult
 
-/** Touch-through, secure overlay for visual debugging. */
+/** Transparent, touch-through output. Saturated cyan is excluded by the white-line mask. */
 internal class VisualLinesOverlay(private val context: Context) {
     private val manager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val view = LinesView(context)
@@ -27,79 +29,89 @@ internal class VisualLinesOverlay(private val context: Context) {
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
-        )
-        params.gravity = Gravity.TOP or Gravity.START
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            // Android 12+ blocks touches through untrusted windows above the
+            // obscuring-opacity limit, even when the Canvas is transparent.
+            alpha = .7f
+        }
         manager.addView(view, params)
         showing = true
     }
 
-    fun update(result: LineDetector.Result) {
-        if (showing) view.update(result)
+    fun update(result: FrameGuideResult, capturedAtMs: Long) {
+        if (showing) view.update(result, capturedAtMs)
     }
 
     fun hide() {
         if (!showing) return
         showing = false
+        view.clear()
         manager.removeView(view)
     }
 
     private class LinesView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.RED
-            strokeWidth = 4f * resources.displayMetrics.density
+            color = Color.CYAN
+            strokeWidth = 2f * resources.displayMetrics.density
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
         }
-        private val cuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.GREEN
-            strokeWidth = 2.5f * resources.displayMetrics.density
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-        }
-        private var result: LineDetector.Result? = null
-        fun update(value: LineDetector.Result) {
-            result = value
+        private var result: FrameGuideResult? = null
+        private var capturedAt = 0L
+        private val expire = Runnable { clear() }
+
+        fun update(value: FrameGuideResult, capturedAtMs: Long) {
+            removeCallbacks(expire)
+            val age = SystemClock.elapsedRealtime() - capturedAtMs
+            result = if (age in 0 until MAX_AGE_MS) value else null
+            capturedAt = capturedAtMs
+            if (result?.guide != null) postDelayed(expire, MAX_AGE_MS - age)
             invalidate()
+        }
+
+        fun clear() {
+            removeCallbacks(expire)
+            result = null
+            invalidate()
+        }
+
+        override fun onDetachedFromWindow() {
+            clear()
+            super.onDetachedFromWindow()
         }
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val r = result ?: return
-            if (r.width <= 0 || r.height <= 0) return
+            val guide = r.guide ?: return
+            if (r.width <= 0 || r.height <= 0 || guide.score < .90f) return
+            if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS) return
+            if (TableBoundsOverlay.editing || r.bounds != TableBoundsOverlay.snapshot()) return
+            // Rotation must be re-confirmed at the new capture size, never stretch an old shot.
+            if (height <= 0 || kotlin.math.abs(width.toFloat() / height - r.width.toFloat() / r.height) > .03f) return
 
-            // Do not draw a trajectory without a detected cue ball.
-            if (r.cueX == null || r.cueY == null) return
-            val guide = r.segments.firstOrNull() ?: return
-            val bounds = TableBoundsOverlay.bounds
-
+            val b = r.bounds
+            val radius = guide.ballRadius
             val points = TargetBallTrajectory.calculate(
-                start = TargetBallTrajectory.Point(guide.x2, guide.y2),
-                direction = TargetBallTrajectory.Point(
-                    guide.x2 - guide.x1,
-                    guide.y2 - guide.y1
-                ),
-                left = bounds[0] * r.width,
-                top = bounds[1] * r.height,
-                right = bounds[2] * r.width,
-                bottom = bounds[3] * r.height,
+                start = TargetBallTrajectory.Point(guide.tip.x, guide.tip.y),
+                direction = TargetBallTrajectory.Point(guide.tip.x - guide.origin.x, guide.tip.y - guide.origin.y),
+                left = b.left * r.width + radius,
+                top = b.top * r.height + radius,
+                right = b.right * r.width - radius,
+                bottom = b.bottom * r.height - radius,
                 maxBounces = 3
             )
-
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
-
-            paint.color = Color.CYAN
-
             for (i in 0 until points.size - 1) {
-                canvas.drawLine(
-                    points[i].x * sx,
-                    points[i].y * sy,
-                    points[i + 1].x * sx,
-                    points[i + 1].y * sy,
-                    paint
-                )
+                canvas.drawLine(points[i].x * sx, points[i].y * sy,
+                    points[i + 1].x * sx, points[i + 1].y * sy, paint)
             }
+            // Also re-check bounds/edit mode without waiting for another capture callback.
+            postInvalidateDelayed(50L)
         }
 
+        companion object { private const val MAX_AGE_MS = 600L }
     }
 }

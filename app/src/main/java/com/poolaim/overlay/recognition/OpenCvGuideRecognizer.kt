@@ -111,7 +111,7 @@ class OpenCvGuideRecognizer {
         val bottom = ceil(bounds.bottom * height).toInt().coerceIn(top + 1, height)
         val roiWidth = right - left
         val roiHeight = bottom - top
-        val scale = min(1.0, 960.0 / max(roiWidth, roiHeight))
+        val scale = min(1.0, 720.0 / max(roiWidth, roiHeight))
         val sampleWidth = max(1, (roiWidth * scale).roundToInt())
         val sampleHeight = max(1, (roiHeight * scale).roundToInt())
         val scaleX = roiWidth.toDouble() / sampleWidth

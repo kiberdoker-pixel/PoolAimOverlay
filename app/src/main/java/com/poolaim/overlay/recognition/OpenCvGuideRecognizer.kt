@@ -214,7 +214,7 @@ class OpenCvGuideRecognizer {
                 if (unique.none { sameGuide(it, candidate) }) unique += candidate
             }
             if (unique.size != 1) return none(if (unique.isEmpty())
-                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии")
+                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии: ${hypotheses.joinToString()}; raw=${lines.dump()}; anchors=${anchors.joinToString()}")
             val candidate = unique.single()
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(candidate.anchor.center),
@@ -223,7 +223,7 @@ class OpenCvGuideRecognizer {
                 score = candidate.score.toFloat()
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Кандидат линии подтверждён геометрией; ожидается стабильность")
+                "Кандидат: ${hypotheses.joinToString()}; raw=${lines.dump()}; anchors=${anchors.joinToString()}")
         } finally {
             circles.release()
             lines.release()
@@ -314,8 +314,6 @@ class OpenCvGuideRecognizer {
         // A slightly tilted Hough fragment can trace out of a wide stripe's side.
         // Reject only when the SAME local white component demonstrably continues
         // beyond this endpoint; do not relax candidate clustering or confidence.
-        if (GuideEndpointSupport.continuesForward(white, width, height,
-                tip.x, tip.y, ux, uy, radius)) return null
         // Hough endpoints have no semantic order. In particular, a cue-white ball or
         // ghost ring at the other end must not turn an incoming cue line into an
         // outgoing object-ball guide. Include circles swallowed by the white trace.

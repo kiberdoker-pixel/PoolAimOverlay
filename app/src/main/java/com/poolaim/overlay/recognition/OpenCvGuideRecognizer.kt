@@ -214,7 +214,7 @@ class OpenCvGuideRecognizer {
                 if (unique.none { sameGuide(it, candidate) }) unique += candidate
             }
             if (unique.size != 1) return none(if (unique.isEmpty())
-                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии")
+                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии: ${unique.joinToString()}")
             val candidate = unique.single()
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(candidate.anchor.center),

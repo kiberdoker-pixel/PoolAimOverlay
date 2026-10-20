@@ -215,7 +215,7 @@ class OpenCvGuideRecognizer {
                 if (center.x < radius * 1.5 || center.y < radius * 1.5 ||
                     center.x > raster.width - radius * 1.5 ||
                     center.y > raster.height - radius * 1.5) continue
-                if (support >= .90) anchors += candidate
+                if (support >= .80) anchors += candidate
             }
             if (anchors.isEmpty()) return none(
                 "Шар у линии не подтверждён: линий=${lines.rows()}, " +
@@ -356,7 +356,7 @@ class OpenCvGuideRecognizer {
                 gap = 0
             } else if (++gap > 2) break
         }
-        if (lastWhite !in (radius * 1.8).toInt()..(radius * 8.0).toInt()) return null
+        if (lastWhite !in (radius * 1.8).toInt()..(radius * 14.0).toInt()) return null
         val tip = PixelPoint(start.x + lastWhite * ux, start.y + lastWhite * uy)
         // A slightly tilted Hough fragment can trace out of a wide stripe's side.
         // Reject only when the SAME local white component demonstrably continues
@@ -397,7 +397,7 @@ class OpenCvGuideRecognizer {
         }
         val score = minOf(supported.toDouble() / samples, thin.toDouble() / samples,
             anchor.roundSupport, 1.0 - across / (radius * 4))
-        return if (score >= .90) Hypothesis(anchor, tip, score) else null
+        return if (score >= .80) Hypothesis(anchor, tip, score) else null
     }
 
     private fun whiteNear(

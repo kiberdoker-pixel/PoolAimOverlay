@@ -195,6 +195,8 @@ class OpenCvGuideRecognizer {
                         hypot(center.x - projectedX, center.y - projectedY) <= radius * 2.5
                     }
                 }
+            val totalCircles = circles.cols()
+            var nearLineCircles = 0
             val anchors = mutableListOf<Anchor>()
             val geometricCircles = mutableListOf<Anchor>()
             for (index in 0 until circles.cols()) {
@@ -203,6 +205,7 @@ class OpenCvGuideRecognizer {
                 val center = PixelPoint(circle[0], circle[1])
                 val radius = circle[2]
                 if (!nearGuide(center, radius)) continue
+                nearLineCircles++
                 val support = roundAnchorSupport(raster, center, radius)
                 val candidate = Anchor(center, radius, support)
                 // Keep cue-white and hollow circles too: they cannot supply an origin,
@@ -213,7 +216,10 @@ class OpenCvGuideRecognizer {
                     center.y > raster.height - radius * 1.5) continue
                 if (support >= .90) anchors += candidate
             }
-            if (anchors.isEmpty()) return none("Не подтверждён небелый шар у начала линии")
+            if (anchors.isEmpty()) return none(
+                "Шар у линии не подтверждён: линий=${lines.rows()}, " +
+                    "окружностей=$totalCircles, рядом=$nearLineCircles, подходящих=0"
+            )
 
             val hypotheses = mutableListOf<Hypothesis>()
             for (index in 0 until lines.rows()) {
@@ -234,7 +240,9 @@ class OpenCvGuideRecognizer {
                 if (unique.none { sameGuide(it, candidate) }) unique += candidate
             }
             if (unique.size != 1) return none(if (unique.isEmpty())
-                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии")
+                "Линия не подтверждена: линий=${lines.rows()}, " +
+                    "окружностей=$totalCircles, рядом=$nearLineCircles, шаров=${anchors.size}"
+                else "Неоднозначное направление линии")
             val candidate = unique.single()
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(candidate.anchor.center),

@@ -150,6 +150,8 @@ class OpenCvGuideRecognizer {
         val hsv = Mat()
         val mask = Mat()
         val lines = Mat()
+        val gray = Mat()
+        val circles = Mat()
         try {
             rgba.put(0, 0, raster.rgba)
             Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
@@ -162,10 +164,8 @@ class OpenCvGuideRecognizer {
                 max(10, (shortSide * .035).roundToInt()), shortSide * .04, 2.0)
             if (lines.empty()) return none("Линия не найдена")
 
-            // Line-only mode: never require balls or circle recognition.
-            // Prefer the longest detected segment, which is typically the game's
-            // main aiming guide. This is a geometric approximation; a lone segment
-            // does not establish its travel direction with certainty.
+            // Build 98: a guide is valid only when attached to the game's hollow
+            // contact marker. A long cue line alone must never produce a prediction.
             val segments = (0 until lines.rows()).mapNotNull { index ->
                 val v = lines.get(index, 0)
                 if (v == null || v.size < 4) null else {
@@ -173,29 +173,68 @@ class OpenCvGuideRecognizer {
                     val b = PixelPoint(v[2], v[3])
                     Triple(a, b, hypot(b.x - a.x, b.y - a.y))
                 }
-            }.filter { it.third >= shortSide * .08 }
-            val longest = segments.maxByOrNull { it.third }
-                ?: return none("Достаточно длинная линия не найдена")
-            val a = longest.first
-            val b = longest.second
-            // Hough endpoints are unordered. Use the outer endpoint as the source
-            // and extend toward the table centre as a stable line-only heuristic.
-            // No balls are identified or used.
-            val cx = raster.width / 2.0
-            val cy = raster.height / 2.0
-            val aDistance = hypot(a.x - cx, a.y - cy)
-            val bDistance = hypot(b.x - cx, b.y - cy)
-            val origin = if (aDistance >= bDistance) a else b
-            val tip = if (aDistance >= bDistance) b else a
+            }.filter { it.third >= shortSide * .025 }
+            Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+            Imgproc.GaussianBlur(gray, gray, Size(5.0, 5.0), 1.4)
+            val radius = shortSide * .020
+            Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 1.0,
+                radius * 3.0, 110.0, 24.0,
+                max(4, (radius * .60).roundToInt()),
+                max(6, (radius * 1.45).roundToInt()))
+            if (circles.empty()) return none("Контактный кружок не найден")
+            data class Candidate(val origin: PixelPoint, val tip: PixelPoint, val quality: Double)
+            val candidates = mutableListOf<Candidate>()
+            for (i in 0 until circles.cols()) {
+                val c = circles.get(0, i) ?: continue
+                if (c.size < 3) continue
+                val center = PixelPoint(c[0], c[1])
+                val cr = c[2]
+                // The incoming cue guide is long and terminates at the ghost marker.
+                val incoming = segments.filter { it.third > shortSide * .20 }
+                    .mapNotNull { seg ->
+                        val da = hypot(seg.first.x - center.x, seg.first.y - center.y)
+                        val db = hypot(seg.second.x - center.x, seg.second.y - center.y)
+                        val near = if (da < db) seg.first else seg.second
+                        val far = if (da < db) seg.second else seg.first
+                        if (min(da, db) > cr * 2.0) null else Triple(near, far, seg.third)
+                    }.maxByOrNull { it.third } ?: continue
+                val inX = incoming.first.x - incoming.second.x
+                val inY = incoming.first.y - incoming.second.y
+                val inLen = hypot(inX, inY)
+                if (inLen < 1.0) continue
+                // Select a short branch radiating from the marker in the incoming
+                // travel hemisphere. Avoid extending the long cue line backwards.
+                val branches = segments.mapNotNull { seg ->
+                    if (seg.third > shortSide * .19 || seg.third < cr * .9) return@mapNotNull null
+                    val da = hypot(seg.first.x - center.x, seg.first.y - center.y)
+                    val db = hypot(seg.second.x - center.x, seg.second.y - center.y)
+                    val near = if (da < db) seg.first else seg.second
+                    val far = if (da < db) seg.second else seg.first
+                    if (min(da, db) > cr * 2.2) return@mapNotNull null
+                    val vx = far.x - center.x
+                    val vy = far.y - center.y
+                    val length = hypot(vx, vy)
+                    if (length < cr * 1.1) return@mapNotNull null
+                    val alignment = (vx * inX + vy * inY) / (length * inLen)
+                    if (alignment < .15) return@mapNotNull null
+                    Candidate(center, far, alignment)
+                }
+                val best = branches.maxByOrNull { it.quality } ?: continue
+                candidates.add(best)
+            }
+            val best = candidates.maxByOrNull { it.quality }
+                ?: return none("Нет короткой исходящей линии у контактного кружка")
             val guide = RecognizedGuide(
-                origin = raster.capturePoint(origin),
-                tip = raster.capturePoint(tip),
+                origin = raster.capturePoint(best.origin),
+                tip = raster.capturePoint(best.tip),
                 ballRadius = (shortSide * .02).toFloat(),
                 score = .95f
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Режим линии: найдено сегментов=${segments.size}")
+                "Не уверен: ветвь у контактного кружка · 3 отражения")
         } finally {
+            circles.release()
+            gray.release()
             lines.release()
             mask.release()
             hsv.release()

@@ -175,7 +175,26 @@ class OpenCvGuideRecognizer {
             Imgproc.GaussianBlur(value, blurred, Size(5.0, 5.0), 1.0)
             Imgproc.HoughCircles(blurred, circles, Imgproc.HOUGH_GRADIENT, 1.0,
                 minRadius * 2.0, 80.0, 10.0, minRadius, maxRadius)
-            if (circles.cols() > 64) return none("Слишком много неоднозначных круглых объектов")
+            // HoughCircles often reports dozens of decorations, highlights and false circles.
+            // Do not reject the entire frame based on their count: retain only circles
+            // close enough to a detected white segment to anchor its outgoing guide.
+            val relevantSegments = (0 until lines.rows()).mapNotNull { row ->
+                val v = lines.get(row, 0)
+                if (v == null || v.size < 4) null else doubleArrayOf(v[0], v[1], v[2], v[3])
+            }
+            fun nearGuide(center: PixelPoint, radius: Double): Boolean =
+                relevantSegments.any { segment ->
+                    val dx = segment[2] - segment[0]
+                    val dy = segment[3] - segment[1]
+                    val len2 = dx * dx + dy * dy
+                    if (len2 < 1.0) false else {
+                        val t = ((center.x - segment[0]) * dx +
+                            (center.y - segment[1]) * dy) / len2
+                        val projectedX = segment[0] + t.coerceIn(-.5, 1.5) * dx
+                        val projectedY = segment[1] + t.coerceIn(-.5, 1.5) * dy
+                        hypot(center.x - projectedX, center.y - projectedY) <= radius * 2.5
+                    }
+                }
             val anchors = mutableListOf<Anchor>()
             val geometricCircles = mutableListOf<Anchor>()
             for (index in 0 until circles.cols()) {
@@ -183,6 +202,7 @@ class OpenCvGuideRecognizer {
                 if (circle.size < 3) continue
                 val center = PixelPoint(circle[0], circle[1])
                 val radius = circle[2]
+                if (!nearGuide(center, radius)) continue
                 val support = roundAnchorSupport(raster, center, radius)
                 val candidate = Anchor(center, radius, support)
                 // Keep cue-white and hollow circles too: they cannot supply an origin,

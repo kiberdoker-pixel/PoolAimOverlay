@@ -127,6 +127,17 @@ class OpenCvGuideRecognizerTest {
     }
 
     @Test
+    fun neutralGrayGameGuideIsRecognized() {
+        val image = scene {
+            ball(220f, 180f)
+            line(230f, 180f, 285f, 180f, Color.rgb(165, 165, 165))
+        }
+        val result = recognizer.inspectBitmap(image, bounds)
+        assertNotNull("Gray game guide must be recognized: ${result.reason}", result.guide)
+        assertTrue(result.guide!!.tip.x > 260f)
+    }
+
+    @Test
     fun uniqueShortGuideHasDirectionAwayFromItsColoredAnchor() {
         val image = scene {
             ball(220f, 180f)

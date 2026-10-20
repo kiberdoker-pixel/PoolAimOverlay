@@ -157,8 +157,9 @@ class OpenCvGuideRecognizer {
             rgba.put(0, 0, raster.rgba)
             Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
             Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
-            // Saturated cyan overlay strokes cannot become white guide candidates.
-            Core.inRange(hsv, Scalar(0.0, 0.0, 190.0), Scalar(180.0, 55.0, 255.0), mask)
+            // Real 8 Ball Pool guides can be neutral gray rather than bright white.
+            // Preserve the low-saturation gate so cyan overlay and colored cloth stay out.
+            Core.inRange(hsv, Scalar(0.0, 0.0, 110.0), Scalar(180.0, 55.0, 255.0), mask)
             val white = ByteArray(raster.width * raster.height)
             mask.get(0, 0, white)
             val shortSide = min(raster.width, raster.height).toDouble()

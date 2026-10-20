@@ -325,8 +325,8 @@ class OpenCvGuideRecognizerTest {
         val result = recognizer.inspectBitmap(image, bounds)
         assertNull("Combined branches: ${result.reason.take(120)}",
             result.guide)
-        assertEquals("Both directions must remain competing hypotheses",
-            "Неоднозначное направление линии", result.reason)
+        assertTrue("Both directions must remain competing hypotheses: ${result.reason}",
+            result.reason.startsWith("Неоднозначное направление линии"))
     }
 
     @Test

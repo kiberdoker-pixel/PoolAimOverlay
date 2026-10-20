@@ -57,9 +57,9 @@ class GuideStabilityGate {
         }
         lastTimeMs = nowMs
         return if (consecutive >= REQUIRED_FRAMES) result.copy(
-            reason = "Устойчивый кандидат линии · 3 отражения"
+            reason = "Не уверен: направление не проверено · 3 отражения"
         ) else result.copy(
-            guide = null, reason = "Подтверждение линии: $consecutive/$REQUIRED_FRAMES"
+            reason = "Не уверен: подтверждение линии $consecutive/$REQUIRED_FRAMES"
         )
     }
 

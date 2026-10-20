@@ -214,7 +214,7 @@ class OpenCvGuideRecognizer {
                 if (unique.none { sameGuide(it, candidate) }) unique += candidate
             }
             if (unique.size != 1) return none(if (unique.isEmpty())
-                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии: ${hypotheses.joinToString()}; raw=${lines.dump()}; anchors=${anchors.joinToString()}")
+                "Линия прицельного шара не подтверждена" else "Неоднозначное направление линии")
             val candidate = unique.single()
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(candidate.anchor.center),
@@ -223,7 +223,7 @@ class OpenCvGuideRecognizer {
                 score = candidate.score.toFloat()
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Кандидат: ${hypotheses.joinToString()}; raw=${lines.dump()}; anchors=${anchors.joinToString()}")
+                "Кандидат линии подтверждён геометрией; ожидается стабильность")
         } finally {
             circles.release()
             lines.release()
@@ -275,7 +275,7 @@ class OpenCvGuideRecognizer {
     }
 
     private fun hypothesis(
-        start: PixelPoint,
+        rawStart: PixelPoint,
         end: PixelPoint,
         anchor: Anchor,
         circles: List<Anchor>,
@@ -283,10 +283,26 @@ class OpenCvGuideRecognizer {
         width: Int,
         height: Int
     ): Hypothesis? {
-        val length = hypot(end.x - start.x, end.y - start.y)
+        val length = hypot(end.x - rawStart.x, end.y - rawStart.y)
         if (length < 1.0) return null
-        val ux = (end.x - start.x) / length
-        val uy = (end.y - start.y) / length
+        val ux = (end.x - rawStart.x) / length
+        val uy = (end.y - rawStart.y) / length
+        // Hough may partition intersecting stripes and return only a distal piece.
+        // Recover its observed near end before testing attachment to a ball. Follow
+        // only existing white support, with exactly the forward trace's tolerances.
+        var backwardWhite = 0
+        var backwardGap = 0
+        for (distance in 0..max(width, height)) {
+            val x = rawStart.x - distance * ux
+            val y = rawStart.y - distance * uy
+            if (x < 0 || y < 0 || x >= width || y >= height) break
+            if (whiteNear(white, width, height, x, y, ux, uy)) {
+                backwardWhite = distance
+                backwardGap = 0
+            } else if (++backwardGap > 2) break
+        }
+        val start = PixelPoint(rawStart.x - backwardWhite * ux,
+            rawStart.y - backwardWhite * uy)
         val bx = anchor.center.x - start.x
         val by = anchor.center.y - start.y
         val along = bx * ux + by * uy
@@ -314,6 +330,8 @@ class OpenCvGuideRecognizer {
         // A slightly tilted Hough fragment can trace out of a wide stripe's side.
         // Reject only when the SAME local white component demonstrably continues
         // beyond this endpoint; do not relax candidate clustering or confidence.
+        if (GuideEndpointSupport.continuesForward(white, width, height,
+                tip.x, tip.y, ux, uy, radius)) return null
         // Hough endpoints have no semantic order. In particular, a cue-white ball or
         // ghost ring at the other end must not turn an incoming cue line into an
         // outgoing object-ball guide. Include circles swallowed by the white trace.

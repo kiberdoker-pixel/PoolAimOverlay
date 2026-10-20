@@ -266,24 +266,29 @@ class OpenCvGuideRecognizerTest {
 
     @Test
     fun differentShortAndLongGuidesFromTheSameAnchorRemainAmbiguous() {
-        val longOnly = recognizer.inspectBitmap(scene {
+        val longOnly = scene {
             ball(220f, 180f)
             line(230f, 180f, 285f, 180f)
-        }, bounds)
-        val shortOnly = recognizer.inspectBitmap(scene {
+        }
+        val shortOnly = scene {
             ball(220f, 180f)
             line(229.85f, 178.26f, 259.39f, 173.05f)
-        }, bounds)
-        val result = recognizer.inspectBitmap(scene {
+        }
+        val longResult = recognizer.inspectBitmap(longOnly, bounds)
+        val shortResult = recognizer.inspectBitmap(shortOnly, bounds)
+        assertNotNull("Long branch alone: ${longResult.reason.take(120)}", longResult.guide)
+        assertNotNull("Short branch alone: ${shortResult.reason.take(120)}", shortResult.guide)
+        val image = scene {
             ball(220f, 180f)
             line(230f, 180f, 285f, 180f)
+            // A real second stroke has its own cap; it must survive endpoint pruning.
             line(229.85f, 178.26f, 259.39f, 173.05f)
-        }, bounds)
-        val diagnostics = "long=$longOnly; short=$shortOnly; combined=$result"
-        assertNotNull(diagnostics, longOnly.guide)
-        assertNotNull(diagnostics, shortOnly.guide)
-        assertNull(diagnostics, result.guide)
-        assertTrue(diagnostics, result.reason.startsWith("Неоднозначное направление линии"))
+        }
+        val result = recognizer.inspectBitmap(image, bounds)
+        assertNull("Combined branches: ${result.reason.take(120)}",
+            result.guide)
+        assertEquals("Both directions must remain competing hypotheses",
+            "Неоднозначное направление линии", result.reason)
     }
 
     @Test

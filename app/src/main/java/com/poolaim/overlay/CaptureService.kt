@@ -45,6 +45,9 @@ class CaptureService : Service() {
     private val guideRecognizer = OpenCvGuideRecognizer()
     private val guideGate = GuideStabilityGate()
     private var lastAnalysisAt = 0L
+    private var analysisCount = 0L
+    private var lastAnalysisDuration = 0L
+    private var lastConfirmedAt = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -158,6 +161,8 @@ class CaptureService : Service() {
                         val capturedAt = SystemClock.elapsedRealtime()
                         if (!stopping && capturedAt - lastAnalysisAt >= 80L) {
                             lastAnalysisAt = capturedAt
+                            analysisCount++
+                            val analysisStart = SystemClock.elapsedRealtime()
                             try {
                                 val bounds = TableBoundsOverlay.snapshot()
                                 val detected = if (TableBoundsOverlay.editing) {
@@ -167,6 +172,8 @@ class CaptureService : Service() {
                                 } else {
                                     guideGate.filter(guideRecognizer.inspect(image, bounds), capturedAt)
                                 }
+                                lastAnalysisDuration = SystemClock.elapsedRealtime() - analysisStart
+                                if (detected.guide != null) lastConfirmedAt = capturedAt
                                 detectorResult = detected.reason
                                 mainHandler.post {
                                     if (!stopping) visualOverlay?.update(detected, capturedAt)
@@ -180,10 +187,10 @@ class CaptureService : Service() {
                             }
                         }
                         if (frameCount == 1L || frameCount % 30L == 0L) {
-                            val msg = "Кадров: $frameCount · $detectorResult"
+                            val msg = "Кадров: $frameCount · анализов: $analysisCount · ${lastAnalysisDuration}мс · $detectorResult"
                             report(msg)
                             mainHandler.post {
-                                overlay?.update("$msg\nРисование: ${visualOverlay?.drawStatus() ?: "нет окна"}")
+                                overlay?.update("$msg\nПоследняя цель: ${if (lastConfirmedAt == 0L) "не найдена" else "${SystemClock.elapsedRealtime() - lastConfirmedAt}мс назад"}\nРисование: ${visualOverlay?.drawStatus() ?: "нет окна"}")
                             }
                             getSystemService(NotificationManager::class.java)
                                 .notify(NOTIFICATION_ID, notification(msg))

@@ -132,7 +132,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             val b = r.bounds
             // Three bounces, line-only: use the calibrated rail boundaries directly.
             // Never inset them by a detected or assumed ball radius.
-            val anchorBased = r.reason.contains("контактного кружка") || r.reason.contains("направление не проверено")
+            val anchorBased = true
             val startX = (if (anchorBased) guide.origin.x else guide.tip.x).coerceIn(b.left * r.width, b.right * r.width)
             val startY = (if (anchorBased) guide.origin.y else guide.tip.y).coerceIn(b.top * r.height, b.bottom * r.height)
             val points = TargetBallTrajectory.calculate(

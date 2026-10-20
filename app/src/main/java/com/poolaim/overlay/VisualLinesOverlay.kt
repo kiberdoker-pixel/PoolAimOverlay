@@ -64,12 +64,20 @@ internal class VisualLinesOverlay(private val context: Context) {
 
         fun update(value: FrameGuideResult, capturedAtMs: Long) {
             removeCallbacks(expire)
-            val age = SystemClock.elapsedRealtime() - capturedAtMs
-            // An unconfirmed frame must not immediately erase a confirmed path.
-            if (value.guide != null && age in 0 until MAX_AGE_MS) {
+            val now = SystemClock.elapsedRealtime()
+            val age = now - capturedAtMs
+            // Clear only for a changed coordinate system or explicit table editing.
+            // A missed recognition frame must not erase a confirmed trajectory.
+            val previous = result
+            if (TableBoundsOverlay.editing ||
+                (previous != null && (previous.width != value.width ||
+                    previous.height != value.height || previous.bounds != value.bounds))) {
+                result = null
+            } else if (value.guide != null && age in 0 until MAX_AGE_MS &&
+                capturedAtMs >= capturedAt) {
                 result = value
                 capturedAt = capturedAtMs
-            } else if (result != null && SystemClock.elapsedRealtime() - capturedAt >= MAX_AGE_MS) {
+            } else if (result != null && now - capturedAt >= MAX_AGE_MS) {
                 result = null
             }
             if (result?.guide != null) {

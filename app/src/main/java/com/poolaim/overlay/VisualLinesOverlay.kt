@@ -70,6 +70,10 @@ internal class VisualLinesOverlay(private val context: Context) {
             private set
         private var result: FrameGuideResult? = null
         private var capturedAt = 0L
+        private var pending: FrameGuideResult? = null
+        private var pendingCount = 0
+        private var smoothed = 0
+        private var jumps = 0
         private val expire = Runnable { clear() }
 
         fun update(value: FrameGuideResult, capturedAtMs: Long) {
@@ -85,8 +89,47 @@ internal class VisualLinesOverlay(private val context: Context) {
                 result = null
             } else if (value.guide != null && age in 0 until MAX_AGE_MS &&
                 capturedAtMs >= capturedAt) {
-                result = value
-                capturedAt = capturedAtMs
+                val old = result?.guide
+                val fresh = value.guide
+                if (old == null) {
+                    result = value
+                    capturedAt = capturedAtMs
+                } else {
+                    val shift = kotlin.math.hypot((fresh.origin.x - old.origin.x).toDouble(),
+                        (fresh.origin.y - old.origin.y).toDouble())
+                    val a = kotlin.math.atan2((old.tip.y-old.origin.y).toDouble(),
+                        (old.tip.x-old.origin.x).toDouble())
+                    val b = kotlin.math.atan2((fresh.tip.y-fresh.origin.y).toDouble(),
+                        (fresh.tip.x-fresh.origin.x).toDouble())
+                    val angle = kotlin.math.abs(kotlin.math.atan2(kotlin.math.sin(b-a),kotlin.math.cos(b-a)))
+                    if (shift < fresh.ballRadius*.35 && angle < Math.toRadians(5.0)) {
+                        fun mix(a: Float,b: Float) = a*.7f+b*.3f
+                        result = value.copy(guide = fresh.copy(
+                            origin = fresh.origin.copy(x=mix(old.origin.x,fresh.origin.x),
+                                y=mix(old.origin.y,fresh.origin.y)),
+                            tip = fresh.tip.copy(x=mix(old.tip.x,fresh.tip.x),
+                                y=mix(old.tip.y,fresh.tip.y))))
+                        capturedAt = capturedAtMs
+                        pending = null
+                        pendingCount = 0
+                        smoothed++
+                    } else {
+                        val candidate = pending?.guide
+                        val match = candidate != null &&
+                            kotlin.math.hypot((candidate.origin.x-fresh.origin.x).toDouble(),
+                                (candidate.origin.y-fresh.origin.y).toDouble()) < fresh.ballRadius*.35 &&
+                            kotlin.math.hypot((candidate.tip.x-fresh.tip.x).toDouble(),
+                                (candidate.tip.y-fresh.tip.y).toDouble()) < fresh.ballRadius*.65
+                        pendingCount = if (match) pendingCount+1 else 1
+                        pending = value
+                        if (pendingCount >= 2) {
+                            result = value
+                            capturedAt = capturedAtMs
+                            pending = null
+                            pendingCount = 0
+                        } else jumps++
+                    }
+                }
             } else if (result != null && now - capturedAt >= MAX_AGE_MS) {
                 result = null
             }
@@ -154,7 +197,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 (guide.tip.x - guide.origin.x).toDouble()
             )).toInt()
             drawStatus = if (points.size >= 2)
-                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}°"
+                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps"
             else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height

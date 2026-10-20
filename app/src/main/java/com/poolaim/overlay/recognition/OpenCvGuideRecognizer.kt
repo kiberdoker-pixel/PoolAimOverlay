@@ -170,91 +170,39 @@ class OpenCvGuideRecognizer {
             if (lines.empty()) return none("Короткая белая линия не найдена")
             if (lines.rows() > 192) return none("Слишком много неоднозначных линий")
 
-            // Luminance alone can hide a saturated red ball against green cloth even
-            // though its channel contrast is strong. HSV value preserves that contrast.
-            Core.extractChannel(hsv, value, 2)
-            Imgproc.GaussianBlur(value, blurred, Size(5.0, 5.0), 1.0)
-            Imgproc.HoughCircles(blurred, circles, Imgproc.HOUGH_GRADIENT, 1.0,
-                minRadius * 2.0, 80.0, 10.0, minRadius, maxRadius)
-            // HoughCircles often reports dozens of decorations, highlights and false circles.
-            // Do not reject the entire frame based on their count: retain only circles
-            // close enough to a detected white segment to anchor its outgoing guide.
-            val relevantSegments = (0 until lines.rows()).mapNotNull { row ->
-                val v = lines.get(row, 0)
-                if (v == null || v.size < 4) null else doubleArrayOf(v[0], v[1], v[2], v[3])
-            }
-            fun nearGuide(center: PixelPoint, radius: Double): Boolean =
-                relevantSegments.any { segment ->
-                    val dx = segment[2] - segment[0]
-                    val dy = segment[3] - segment[1]
-                    val len2 = dx * dx + dy * dy
-                    if (len2 < 1.0) false else {
-                        val t = ((center.x - segment[0]) * dx +
-                            (center.y - segment[1]) * dy) / len2
-                        val projectedX = segment[0] + t.coerceIn(-.5, 1.5) * dx
-                        val projectedY = segment[1] + t.coerceIn(-.5, 1.5) * dy
-                        hypot(center.x - projectedX, center.y - projectedY) <= radius * 2.5
-                    }
+            // Line-only mode: never require balls or circle recognition.
+            // Prefer the longest detected segment, which is typically the game's
+            // main aiming guide. This is a geometric approximation; a lone segment
+            // does not establish its travel direction with certainty.
+            val segments = (0 until lines.rows()).mapNotNull { index ->
+                val v = lines.get(index, 0)
+                if (v == null || v.size < 4) null else {
+                    val a = PixelPoint(v[0], v[1])
+                    val b = PixelPoint(v[2], v[3])
+                    Triple(a, b, hypot(b.x - a.x, b.y - a.y))
                 }
-            val totalCircles = circles.cols()
-            var nearLineCircles = 0
-            val anchors = mutableListOf<Anchor>()
-            val geometricCircles = mutableListOf<Anchor>()
-            for (index in 0 until circles.cols()) {
-                val circle = circles.get(0, index) ?: continue
-                if (circle.size < 3) continue
-                val center = PixelPoint(circle[0], circle[1])
-                val radius = circle[2]
-                if (!nearGuide(center, radius)) continue
-                nearLineCircles++
-                val support = roundAnchorSupport(raster, center, radius)
-                val candidate = Anchor(center, radius, support)
-                // Keep cue-white and hollow circles too: they cannot supply an origin,
-                // but their presence at the opposite end makes direction ambiguous.
-                geometricCircles += candidate
-                if (center.x < radius * 1.5 || center.y < radius * 1.5 ||
-                    center.x > raster.width - radius * 1.5 ||
-                    center.y > raster.height - radius * 1.5) continue
-                if (support >= .80) anchors += candidate
-            }
-            if (anchors.isEmpty()) return none(
-                "Шар у линии не подтверждён: линий=${lines.rows()}, " +
-                    "окружностей=$totalCircles, рядом=$nearLineCircles, подходящих=0"
-            )
-
-            val hypotheses = mutableListOf<Hypothesis>()
-            for (index in 0 until lines.rows()) {
-                val values = lines.get(index, 0) ?: continue
-                if (values.size < 4) continue
-                val a = PixelPoint(values[0], values[1])
-                val b = PixelPoint(values[2], values[3])
-                for ((start, end) in listOf(a to b, b to a)) {
-                    for (anchor in anchors) {
-                        hypothesis(start, end, anchor, geometricCircles,
-                            white, raster.width, raster.height)
-                            ?.let { hypotheses += it }
-                    }
-                }
-            }
-            val unique = mutableListOf<Hypothesis>()
-            for (candidate in hypotheses.sortedByDescending { it.score }) {
-                if (unique.none { sameGuide(it, candidate) }) unique += candidate
-            }
-            if (unique.size != 1) return none(if (unique.isEmpty())
-                "Линия не подтверждена: линий=${lines.rows()}, " +
-                    "окружностей=$totalCircles, рядом=$nearLineCircles, шаров=${anchors.size}, " +
-                    "гипотез=0"
-                else "Неоднозначное направление линии: гипотез=${hypotheses.size}, " +
-                    "направлений=${unique.size}, шаров=${anchors.size}")
-            val candidate = unique.single()
+            }.filter { it.third >= shortSide * .08 }
+            val longest = segments.maxByOrNull { it.third }
+                ?: return none("Достаточно длинная линия не найдена")
+            val a = longest.first
+            val b = longest.second
+            // A line without a visible cue or endpoint marker has two possible
+            // directions. Choose the endpoint nearer the table centre as a
+            // deterministic fallback; this may need refinement on real captures.
+            val cx = raster.width / 2.0
+            val cy = raster.height / 2.0
+            val aDistance = hypot(a.x - cx, a.y - cy)
+            val bDistance = hypot(b.x - cx, b.y - cy)
+            val origin = if (aDistance <= bDistance) a else b
+            val tip = if (aDistance <= bDistance) b else a
             val guide = RecognizedGuide(
-                origin = raster.capturePoint(candidate.anchor.center),
-                tip = raster.capturePoint(candidate.tip),
-                ballRadius = (candidate.anchor.radius * (raster.scaleX + raster.scaleY) / 2).toFloat(),
-                score = candidate.score.toFloat()
+                origin = raster.capturePoint(origin),
+                tip = raster.capturePoint(tip),
+                ballRadius = (shortSide * .02).toFloat(),
+                score = .95f
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Кандидат линии подтверждён геометрией; ожидается стабильность")
+                "Режим линии: найдено сегментов=${segments.size}")
         } finally {
             circles.release()
             lines.release()

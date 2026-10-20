@@ -100,6 +100,31 @@ class OpenCvGuideRecognizerTest {
     }
 
     @Test
+    fun numerousUnrelatedCircularDecorationsDoNotVetoAUniqueGuide() {
+        val image = scene {
+            ball(220f, 180f)
+            line(230f, 180f, 285f, 180f)
+            val decoration = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(85, 160, 150)
+                style = Paint.Style.STROKE
+                strokeWidth = 2f
+            }
+            // More than the old global 64-circle cutoff, kept away from the guide.
+            for (row in 0 until 4) {
+                for (column in 0 until 18) {
+                    val y = if (row < 2) 28f + row * 35f else 275f + (row - 2) * 35f
+                    drawCircle(24f + column * 34f, y, 10f, decoration)
+                }
+            }
+        }
+        val result = recognizer.inspectBitmap(image, bounds)
+        assertNotNull("Unrelated circular clutter must not veto the guide: ${result.reason}",
+            result.guide)
+        assertEquals(220f, result.guide!!.origin.x, 6f)
+        assertTrue(result.guide!!.tip.x > 260f)
+    }
+
+    @Test
     fun uniqueShortGuideHasDirectionAwayFromItsColoredAnchor() {
         val image = scene {
             ball(220f, 180f)

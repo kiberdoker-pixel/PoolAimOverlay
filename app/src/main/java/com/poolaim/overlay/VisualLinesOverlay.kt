@@ -143,7 +143,18 @@ internal class VisualLinesOverlay(private val context: Context) {
                 bottom = b.bottom * r.height,
                 maxBounces = 3
             )
-            drawStatus = if (points.size >= 2) "отрисовка: ${points.size - 1} отрезка · ${r.width}x${r.height} → ${width}x${height}" else "математика: нет отрезков"
+            val uncertain = r.reason.startsWith("Не уверен")
+            paint.color = if (uncertain) Color.rgb(255, 174, 48) else Color.CYAN
+            paint.pathEffect = if (uncertain) android.graphics.DashPathEffect(
+                floatArrayOf(14f * resources.displayMetrics.density, 9f * resources.displayMetrics.density), 0f
+            ) else null
+            val angle = Math.toDegrees(kotlin.math.atan2(
+                (guide.tip.y - guide.origin.y).toDouble(),
+                (guide.tip.x - guide.origin.x).toDouble()
+            )).toInt()
+            drawStatus = if (points.size >= 2)
+                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${guide.tip.x.toInt()},${guide.tip.y.toInt()} · угол ${angle}°"
+            else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
             val left = b.left * r.width * sx

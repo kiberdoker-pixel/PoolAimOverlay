@@ -156,7 +156,7 @@ class CaptureService : Service() {
                     try {
                         frameCount++
                         val capturedAt = SystemClock.elapsedRealtime()
-                        if (!stopping && capturedAt - lastAnalysisAt >= 120L) {
+                        if (!stopping && capturedAt - lastAnalysisAt >= 80L) {
                             lastAnalysisAt = capturedAt
                             try {
                                 val bounds = TableBoundsOverlay.snapshot()

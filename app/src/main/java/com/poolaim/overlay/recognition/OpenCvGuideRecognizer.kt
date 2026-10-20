@@ -217,13 +217,13 @@ class OpenCvGuideRecognizer {
                 val objectLength = hypot(objectX, objectY)
                 val branches = segments.mapNotNull { seg ->
                     if (seg.third > shortSide * .19 || seg.third < cr * .9) return@mapNotNull null
-                    val da = hypot(seg.first.x - center.x, seg.first.y - center.y)
-                    val db = hypot(seg.second.x - center.x, seg.second.y - center.y)
+                    val da = hypot(seg.first.x - target.x, seg.first.y - target.y)
+                    val db = hypot(seg.second.x - target.x, seg.second.y - target.y)
                     val near = if (da < db) seg.first else seg.second
                     val far = if (da < db) seg.second else seg.first
                     if (min(da, db) > cr * 2.2) return@mapNotNull null
-                    val vx = far.x - center.x
-                    val vy = far.y - center.y
+                    val vx = far.x - near.x
+                    val vy = far.y - near.y
                     val length = hypot(vx, vy)
                     if (length < cr * 1.1) return@mapNotNull null
                     val alignment = (vx * objectX + vy * objectY) / (length * objectLength)

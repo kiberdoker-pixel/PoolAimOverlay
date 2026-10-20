@@ -255,16 +255,62 @@ class OpenCvGuideRecognizer {
                     it.score > best.score - .07
             }
             if (conflicting) return none("Несколько целей · кандидатов=${candidates.size}")
+            // Refine the center by maximizing the circular color boundary around
+            // the rough target. This avoids aiming from a random interior pixel.
+            var refined = best.target
+            var centerScore = Double.NEGATIVE_INFINITY
+            for (dy in -5..5) for (dx in -5..5) {
+                val p = PixelPoint(best.target.x + dx * radiusPx * .12,
+                    best.target.y + dy * radiusPx * .12)
+                val support = roundAnchorSupport(raster, p, radiusPx)
+                val displacement = hypot(p.x - best.target.x, p.y - best.target.y) / radiusPx
+                val score = support - displacement * .08
+                if (score > centerScore) { centerScore = score; refined = p }
+            }
+            val geomX = refined.x - best.marker.x
+            val geomY = refined.y - best.marker.y
+            val geomLength = hypot(geomX, geomY)
+            if (geomLength < 1.0) return none("Нулевая геометрия цели")
+            val gx = geomX / geomLength
+            val gy = geomY / geomLength
+            // Short guide is useful only if it starts at the actual target
+            // and points away from the impact marker, never along the cue path.
+            var bestBranch: PixelPoint? = null
+            var bestBranchError = Double.POSITIVE_INFINITY
+            for (seg in segments) {
+                if (seg.third < radiusPx * 1.0 || seg.third > shortSide * .18) continue
+                val da = hypot(seg.first.x - refined.x, seg.first.y - refined.y)
+                val db = hypot(seg.second.x - refined.x, seg.second.y - refined.y)
+                val near = if (da < db) seg.first else seg.second
+                val far = if (da < db) seg.second else seg.first
+                if (min(da, db) > radiusPx * 2.1) continue
+                val vx = (far.x - near.x) / seg.third
+                val vy = (far.y - near.y) / seg.third
+                val cosine = vx * gx + vy * gy
+                if (cosine < kotlin.math.cos(18.0 * PI / 180.0)) continue
+                val error = kotlin.math.acos(cosine.coerceIn(-1.0, 1.0)) * 180.0 / PI
+                if (error < bestBranchError) {
+                    bestBranchError = error
+                    bestBranch = PixelPoint(vx, vy)
+                }
+            }
+            val chosen = if (bestBranch != null && bestBranchError <= 12.0)
+                bestBranch!! else PixelPoint(gx, gy)
+            val geomAngle = Math.toDegrees(kotlin.math.atan2(gy, gx)).roundToInt()
+            val branchAngle = bestBranch?.let {
+                Math.toDegrees(kotlin.math.atan2(it.y, it.x)).roundToInt().toString() + "°"
+            } ?: "нет"
+            val delta = if (bestBranch != null) "${bestBranchError.roundToInt()}°" else "—"
             val guide = RecognizedGuide(
-                origin = raster.capturePoint(best.target),
+                origin = raster.capturePoint(refined),
                 tip = raster.capturePoint(PixelPoint(
-                    best.target.x + best.direction.x * radiusPx * 5,
-                    best.target.y + best.direction.y * radiusPx * 5)),
+                    refined.x + chosen.x * radiusPx * 5,
+                    refined.y + chosen.y * radiusPx * 5)),
                 ballRadius = (radiusPx * raster.scaleX).toFloat(),
                 score = .95f
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Цель по геометрии · входящих=$longGuides · цветных=$coloredTargets · геометрия=$geometryPass · 3 отражения")
+                "Цель · угол геом=$geomAngle° · ветвь=$branchAngle · Δ=$delta · уточнение=${(hypot(refined.x-best.target.x,refined.y-best.target.y)*raster.scaleX).roundToInt()}px · 3 отражения")
         } finally {
             circles.release()
             gray.release()

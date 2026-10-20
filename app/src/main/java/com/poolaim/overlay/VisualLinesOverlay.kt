@@ -92,14 +92,17 @@ internal class VisualLinesOverlay(private val context: Context) {
             if (height <= 0 || kotlin.math.abs(width.toFloat() / height - r.width.toFloat() / r.height) > .03f) return
 
             val b = r.bounds
-            val radius = guide.ballRadius
+            // Line-only geometry: use the calibrated rail boundaries directly.
+            // Never inset them by a detected or assumed ball radius.
+            val startX = guide.tip.x.coerceIn(b.left * r.width, b.right * r.width)
+            val startY = guide.tip.y.coerceIn(b.top * r.height, b.bottom * r.height)
             val points = TargetBallTrajectory.calculate(
-                start = TargetBallTrajectory.Point(guide.tip.x, guide.tip.y),
+                start = TargetBallTrajectory.Point(startX, startY),
                 direction = TargetBallTrajectory.Point(guide.tip.x - guide.origin.x, guide.tip.y - guide.origin.y),
-                left = b.left * r.width + radius,
-                top = b.top * r.height + radius,
-                right = b.right * r.width - radius,
-                bottom = b.bottom * r.height - radius,
+                left = b.left * r.width,
+                top = b.top * r.height,
+                right = b.right * r.width,
+                bottom = b.bottom * r.height,
                 maxBounces = 3
             )
             val sx = width.toFloat() / r.width

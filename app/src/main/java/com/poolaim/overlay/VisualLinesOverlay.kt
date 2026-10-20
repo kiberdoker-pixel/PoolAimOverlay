@@ -87,7 +87,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             val guide = r.guide ?: return
             if (r.width <= 0 || r.height <= 0 || guide.score < .90f) return
             if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS) return
-            if (TableBoundsOverlay.editing || r.bounds != TableBoundsOverlay.snapshot()) return
+            if (TableBoundsOverlay.editing) return
             // Rotation must be re-confirmed at the new capture size, never stretch an old shot.
             if (height <= 0 || kotlin.math.abs(width.toFloat() / height - r.width.toFloat() / r.height) > .03f) return
 

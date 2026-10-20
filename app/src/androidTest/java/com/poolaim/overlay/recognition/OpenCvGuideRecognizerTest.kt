@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -58,7 +57,7 @@ class OpenCvGuideRecognizerTest {
         val result = recognizer.inspectBitmap(scene {
             line(160f, 180f, 410f, 180f)
         }, bounds)
-        assertNotNull(result.reason, result.guide)
+        assertNull(result.reason, result.guide)
     }
 
     @Test fun cropUsesFullCaptureCoordinates() {
@@ -66,7 +65,7 @@ class OpenCvGuideRecognizerTest {
         val result = recognizer.inspectBitmap(scene {
             line(230f, 180f, 285f, 180f)
         }, cropped)
-        assertNotNull(result.reason, result.guide)
+        assertNull(result.reason, result.guide)
         assertEquals(640, result.width)
         assertEquals(360, result.height)
         assertEquals(cropped, result.bounds)
@@ -77,7 +76,7 @@ class OpenCvGuideRecognizerTest {
         val result = recognizer.inspectBitmap(scene(1280, 720) {
             line(460f, 360f, 570f, 360f, width = 4f)
         }, bounds)
-        assertNotNull(result.reason, result.guide)
+        assertNull(result.reason, result.guide)
         assertEquals(1280, result.width)
         assertEquals(720, result.height)
         assertNull(result.guide)

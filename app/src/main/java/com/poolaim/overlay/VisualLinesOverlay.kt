@@ -115,9 +115,28 @@ internal class VisualLinesOverlay(private val context: Context) {
             )
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
-            for (i in 0 until points.size - 1) {
-                canvas.drawLine(points[i].x * sx, points[i].y * sy,
-                    points[i + 1].x * sx, points[i + 1].y * sy, paint)
+            val left = b.left * r.width * sx
+            val top = b.top * r.height * sy
+            val right = b.right * r.width * sx
+            val bottom = b.bottom * r.height * sy
+            // Strictly clip rendered pixels to the calibrated table ROI.
+            // Also clamp every endpoint against floating-point overshoot.
+            val saved = canvas.save()
+            try {
+                canvas.clipRect(left, top, right, bottom)
+                for (i in 0 until points.size - 1) {
+                    val from = points[i]
+                    val to = points[i + 1]
+                    canvas.drawLine(
+                        (from.x * sx).coerceIn(left, right),
+                        (from.y * sy).coerceIn(top, bottom),
+                        (to.x * sx).coerceIn(left, right),
+                        (to.y * sy).coerceIn(top, bottom),
+                        paint
+                    )
+                }
+            } finally {
+                canvas.restoreToCount(saved)
             }
             // Also re-check bounds/edit mode without waiting for another capture callback.
             postInvalidateDelayed(50L)

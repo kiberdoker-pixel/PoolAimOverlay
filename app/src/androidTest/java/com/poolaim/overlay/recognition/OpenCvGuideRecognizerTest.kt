@@ -7,7 +7,6 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -15,7 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.opencv.android.OpenCVLoader
 
-/** Native OpenCV tests for the line-only mode; no ball detection is involved. */
+/** Native OpenCV tests: a bare line is insufficient without a contact marker. */
 @RunWith(AndroidJUnit4::class)
 class OpenCvGuideRecognizerTest {
     private val images = mutableListOf<Bitmap>()
@@ -37,16 +36,14 @@ class OpenCvGuideRecognizerTest {
             line(230f, 180f, 285f, 180f)
         }, bounds)
         val guide = result.guide
-        assertNotNull(result.reason, guide)
-        assertTrue(guide!!.tip.x > guide.origin.x)
-        assertTrue(guide.tip.x - guide.origin.x > 35f)
+        assertNull(result.reason, guide)
     }
 
     @Test fun grayLineIsDetectedWithoutAnyBall() {
         val result = recognizer.inspectBitmap(scene {
             line(230f, 180f, 285f, 180f, Color.rgb(165, 165, 165))
         }, bounds)
-        assertNotNull(result.reason, result.guide)
+        assertNull(result.reason, result.guide)
     }
 
     @Test fun saturatedCyanOverlayIsIgnored() {
@@ -72,8 +69,7 @@ class OpenCvGuideRecognizerTest {
         assertEquals(640, result.width)
         assertEquals(360, result.height)
         assertEquals(cropped, result.bounds)
-        assertTrue(result.guide!!.origin.x in 225f..290f)
-        assertTrue(result.guide!!.tip.x in 225f..290f)
+        assertNull(result.guide)
     }
 
     @Test fun scaledFrameMapsBackToCapturePixels() {
@@ -83,8 +79,7 @@ class OpenCvGuideRecognizerTest {
         assertNotNull(result.reason, result.guide)
         assertEquals(1280, result.width)
         assertEquals(720, result.height)
-        assertTrue(result.guide!!.origin.x in 450f..580f)
-        assertTrue(result.guide!!.tip.x in 450f..580f)
+        assertNull(result.guide)
     }
 
     @Test fun invalidBoundsReject() {

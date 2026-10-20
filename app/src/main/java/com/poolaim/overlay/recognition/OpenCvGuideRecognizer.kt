@@ -160,8 +160,7 @@ class OpenCvGuideRecognizer {
             val shortSide = min(raster.width, raster.height).toDouble()
             Imgproc.HoughLinesP(mask, lines, 1.0, PI / 180.0,
                 max(10, (shortSide * .035).roundToInt()), shortSide * .04, 2.0)
-            if (lines.empty()) return none("Короткая белая линия не найдена")
-            if (lines.rows() > 192) return none("Слишком много неоднозначных линий")
+            if (lines.empty()) return none("Линия не найдена")
 
             // Line-only mode: never require balls or circle recognition.
             // Prefer the longest detected segment, which is typically the game's
@@ -179,15 +178,15 @@ class OpenCvGuideRecognizer {
                 ?: return none("Достаточно длинная линия не найдена")
             val a = longest.first
             val b = longest.second
-            // A line without a visible cue or endpoint marker has two possible
-            // directions. Choose the endpoint nearer the table centre as a
-            // deterministic fallback; this may need refinement on real captures.
+            // Hough endpoints are unordered. Use the outer endpoint as the source
+            // and extend toward the table centre as a stable line-only heuristic.
+            // No balls are identified or used.
             val cx = raster.width / 2.0
             val cy = raster.height / 2.0
             val aDistance = hypot(a.x - cx, a.y - cy)
             val bDistance = hypot(b.x - cx, b.y - cy)
-            val origin = if (aDistance <= bDistance) a else b
-            val tip = if (aDistance <= bDistance) b else a
+            val origin = if (aDistance >= bDistance) a else b
+            val tip = if (aDistance >= bDistance) b else a
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(origin),
                 tip = raster.capturePoint(tip),

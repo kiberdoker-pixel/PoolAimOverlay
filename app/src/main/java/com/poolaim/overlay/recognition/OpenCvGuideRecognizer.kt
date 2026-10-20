@@ -215,6 +215,7 @@ class OpenCvGuideRecognizer {
                 if (center.x < radius * 1.5 || center.y < radius * 1.5 ||
                     center.x > raster.width - radius * 1.5 ||
                     center.y > raster.height - radius * 1.5) continue
+                // Allow modest anti-aliasing and ball textures in real captured frames.
                 if (support >= .80) anchors += candidate
             }
             if (anchors.isEmpty()) return none(

@@ -170,11 +170,14 @@ class CaptureService : Service() {
                                     FrameGuideResult(image.width, image.height, bounds,
                                         reason = "Настройка границ стола · прогноз скрыт")
                                 } else {
-                                    guideGate.filter(guideRecognizer.inspect(image, bounds), capturedAt)
+                                    guideRecognizer.inspect(image, bounds).let { raw ->
+                                        guideGate.filter(raw, capturedAt).also { gated ->
+                                            detectorResult = "${gated.reason} · CV: ${raw.reason}"
+                                        }
+                                    }
                                 }
                                 lastAnalysisDuration = SystemClock.elapsedRealtime() - analysisStart
                                 if (detected.guide != null) lastConfirmedAt = capturedAt
-                                detectorResult = detected.reason
                                 mainHandler.post {
                                     if (!stopping) visualOverlay?.update(detected, capturedAt)
                                 }

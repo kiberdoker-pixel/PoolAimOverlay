@@ -243,7 +243,7 @@ class OpenCvGuideRecognizer {
                 score = .95f
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Цель найдена · направление от прицельного шара · 3 отражения")
+                "Цель найдена · кругов=${circles.cols()} · линий=${segments.size} · вариантов=${candidates.size} · 3 отражения")
         } finally {
             circles.release()
             gray.release()

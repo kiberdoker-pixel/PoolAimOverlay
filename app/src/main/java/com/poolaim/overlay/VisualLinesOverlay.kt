@@ -33,7 +33,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             gravity = Gravity.TOP or Gravity.START
             // Android 12+ blocks touches through untrusted windows above the
             // obscuring-opacity limit, even when the Canvas is transparent.
-            alpha = .7f
+            alpha = .8f
         }
         manager.addView(view, params)
         showing = true
@@ -53,6 +53,7 @@ internal class VisualLinesOverlay(private val context: Context) {
     private class LinesView(context: Context) : View(context) {
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.CYAN
+            alpha = 255
             strokeWidth = 2f * resources.displayMetrics.density
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND

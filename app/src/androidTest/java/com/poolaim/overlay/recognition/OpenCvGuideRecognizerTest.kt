@@ -265,6 +265,21 @@ class OpenCvGuideRecognizerTest {
     }
 
     @Test
+    fun differentShortAndLongGuidesFromTheSameAnchorRemainAmbiguous() {
+        val image = scene {
+            ball(220f, 180f)
+            line(230f, 180f, 285f, 180f)
+            // A real second stroke has its own cap; it must survive endpoint pruning.
+            line(229.85f, 178.26f, 259.39f, 173.05f)
+        }
+        val result = recognizer.inspectBitmap(image, bounds)
+        assertNull("Distinct visible directions must not be merged into one guide",
+            result.guide)
+        assertEquals("Both directions must remain competing hypotheses",
+            "Неоднозначное направление линии", result.reason)
+    }
+
+    @Test
     fun invalidTableBoundsFailClosed() {
         val image = scene {
             ball(220f, 180f)

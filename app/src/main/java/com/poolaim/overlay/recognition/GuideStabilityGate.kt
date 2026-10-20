@@ -68,10 +68,11 @@ class GuideStabilityGate {
         if (!guide.score.isFinite() || guide.score < MIN_SCORE || guide.score > 1f ||
             !guide.ballRadius.isFinite() || guide.ballRadius <= 0f) return false
         val b = frame.bounds
-        val left = b.left.toDouble() * frame.width
-        val top = b.top.toDouble() * frame.height
-        val right = b.right.toDouble() * frame.width
-        val bottom = b.bottom.toDouble() * frame.height
+        val radius = guide.ballRadius.toDouble()
+        val left = b.left.toDouble() * frame.width + radius
+        val top = b.top.toDouble() * frame.height + radius
+        val right = b.right.toDouble() * frame.width - radius
+        val bottom = b.bottom.toDouble() * frame.height - radius
         if (left >= right || top >= bottom) return false
         fun inside(point: GuidePoint): Boolean = point.x.isFinite() && point.y.isFinite() &&
             point.x.toDouble() in left..right && point.y.toDouble() in top..bottom

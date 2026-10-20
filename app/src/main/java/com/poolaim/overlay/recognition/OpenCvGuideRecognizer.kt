@@ -149,10 +149,7 @@ class OpenCvGuideRecognizer {
         val rgb = Mat()
         val hsv = Mat()
         val mask = Mat()
-        val value = Mat()
-        val blurred = Mat()
         val lines = Mat()
-        val circles = Mat()
         try {
             rgba.put(0, 0, raster.rgba)
             Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
@@ -160,11 +157,7 @@ class OpenCvGuideRecognizer {
             // Real 8 Ball Pool guides can be neutral gray rather than bright white.
             // Preserve the low-saturation gate so cyan overlay and colored cloth stay out.
             Core.inRange(hsv, Scalar(0.0, 0.0, 110.0), Scalar(180.0, 55.0, 255.0), mask)
-            val white = ByteArray(raster.width * raster.height)
-            mask.get(0, 0, white)
             val shortSide = min(raster.width, raster.height).toDouble()
-            val minRadius = max(4, (shortSide * .016).roundToInt())
-            val maxRadius = max(minRadius + 2, (shortSide * .045).roundToInt())
             Imgproc.HoughLinesP(mask, lines, 1.0, PI / 180.0,
                 max(10, (shortSide * .035).roundToInt()), shortSide * .04, 2.0)
             if (lines.empty()) return none("Короткая белая линия не найдена")
@@ -204,10 +197,7 @@ class OpenCvGuideRecognizer {
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
                 "Режим линии: найдено сегментов=${segments.size}")
         } finally {
-            circles.release()
             lines.release()
-            blurred.release()
-            value.release()
             mask.release()
             hsv.release()
             rgb.release()

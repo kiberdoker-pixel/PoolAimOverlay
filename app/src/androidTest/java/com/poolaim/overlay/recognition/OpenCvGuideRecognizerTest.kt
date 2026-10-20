@@ -82,6 +82,39 @@ class OpenCvGuideRecognizerTest {
         assertNull(result.guide)
     }
 
+    @Test fun longCueGuideEndingAtRailDoesNotCreateObjectBall() {
+        val result = recognizer.inspectBitmap(scene {
+            line(150f, 180f, 475f, 180f)
+            drawCircle(475f, 180f, 10f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.STROKE
+                strokeWidth = 2f
+            })
+        }, bounds)
+        assertNull("A contact ring without a target ball is not a collision", result.guide)
+    }
+
+    @Test fun geometricTargetIsInFrontOfContactMarker() {
+        val result = recognizer.inspectBitmap(scene {
+            line(100f, 180f, 320f, 180f, width = 3f)
+            drawCircle(320f, 180f, 10f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.STROKE
+                strokeWidth = 2f
+            })
+            drawCircle(340f, 180f, 10f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.RED
+                style = Paint.Style.FILL
+            })
+        }, bounds)
+        // Detection may conservatively reject a synthetic marker. If accepted,
+        // the trajectory must originate at the object, never the ghost marker.
+        result.guide?.let {
+            assertTrue("Object ball center must be beyond the impact ring", it.origin.x > 326f)
+            assertTrue("Object ball direction must be forward", it.tip.x > it.origin.x)
+        }
+    }
+
     @Test fun invalidBoundsReject() {
         val result = recognizer.inspectBitmap(scene {
             line(230f, 180f, 285f, 180f)

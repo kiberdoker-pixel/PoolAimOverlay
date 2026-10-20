@@ -12,9 +12,9 @@ import kotlin.math.min
 class GuideStabilityGate {
     companion object {
         const val MIN_SCORE = 0.90f
-        private const val REQUIRED_FRAMES = 3
+        private const val REQUIRED_FRAMES = 2
         private const val MAX_GAP_MS = 500L
-        private const val POSITION_RADIUS_FRACTION = 0.4
+        private const val POSITION_RADIUS_FRACTION = 1.5
         private val MIN_DIRECTION_COSINE = cos(Math.toRadians(5.0))
     }
 
@@ -68,11 +68,10 @@ class GuideStabilityGate {
         if (!guide.score.isFinite() || guide.score < MIN_SCORE || guide.score > 1f ||
             !guide.ballRadius.isFinite() || guide.ballRadius <= 0f) return false
         val b = frame.bounds
-        val radius = guide.ballRadius.toDouble()
-        val left = b.left.toDouble() * frame.width + radius
-        val top = b.top.toDouble() * frame.height + radius
-        val right = b.right.toDouble() * frame.width - radius
-        val bottom = b.bottom.toDouble() * frame.height - radius
+        val left = b.left.toDouble() * frame.width
+        val top = b.top.toDouble() * frame.height
+        val right = b.right.toDouble() * frame.width
+        val bottom = b.bottom.toDouble() * frame.height
         if (left >= right || top >= bottom) return false
         fun inside(point: GuidePoint): Boolean = point.x.isFinite() && point.y.isFinite() &&
             point.x.toDouble() in left..right && point.y.toDouble() in top..bottom

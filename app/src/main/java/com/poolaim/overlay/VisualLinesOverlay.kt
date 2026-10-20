@@ -39,6 +39,8 @@ internal class VisualLinesOverlay(private val context: Context) {
         showing = true
     }
 
+    fun drawStatus(): String = if (showing) view.drawStatus else "окно скрыто"
+
     fun update(result: FrameGuideResult, capturedAtMs: Long) {
         if (showing) view.update(result, capturedAtMs)
     }
@@ -63,6 +65,8 @@ internal class VisualLinesOverlay(private val context: Context) {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
         }
+        var drawStatus: String = "ожидание линии"
+            private set
         private var result: FrameGuideResult? = null
         private var capturedAt = 0L
         private val expire = Runnable { clear() }
@@ -95,6 +99,7 @@ internal class VisualLinesOverlay(private val context: Context) {
         fun clear() {
             removeCallbacks(expire)
             result = null
+            drawStatus = "линия очищена"
             invalidate()
         }
 
@@ -105,13 +110,22 @@ internal class VisualLinesOverlay(private val context: Context) {
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val r = result ?: return
-            val guide = r.guide ?: return
-            if (r.width <= 0 || r.height <= 0 || guide.score < .90f) return
-            if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS) return
-            if (TableBoundsOverlay.editing) return
-            // Rotation must be re-confirmed at the new capture size, never stretch an old shot.
-            if (height <= 0 || kotlin.math.abs(width.toFloat() / height - r.width.toFloat() / r.height) > .03f) return
+            val r = result ?: run { drawStatus = "нет подтверждённой линии"; return }
+            val guide = r.guide ?: run { drawStatus = "нет координат линии"; return }
+            if (r.width <= 0 || r.height <= 0 || guide.score < .90f) {
+                drawStatus = "неверный кадр или оценка"; return
+            }
+            if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS) {
+                drawStatus = "линия устарела"; return
+            }
+            if (TableBoundsOverlay.editing) {
+                drawStatus = "редактирование рамки"; return
+            }
+            // Report a capture/overlay coordinate mismatch rather than silently hiding the line.
+            if (height <= 0 || kotlin.math.abs(width.toFloat() / height - r.width.toFloat() / r.height) > .03f) {
+                drawStatus = "размер захвата ${r.width}x${r.height}, слой ${width}x${height}"
+                return
+            }
 
             val b = r.bounds
             // Three bounces, line-only: use the calibrated rail boundaries directly.
@@ -127,6 +141,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 bottom = b.bottom * r.height,
                 maxBounces = 3
             )
+            drawStatus = if (points.size >= 2) "отрисовка: ${points.size - 1} отрезка" else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
             val left = b.left * r.width * sx

@@ -115,6 +115,6 @@ internal class VisualLinesOverlay(private val context: Context) {
             postInvalidateDelayed(50L)
         }
 
-        companion object { private const val MAX_AGE_MS = 600L }
+        companion object { private const val MAX_AGE_MS = 1400L }
     }
 }

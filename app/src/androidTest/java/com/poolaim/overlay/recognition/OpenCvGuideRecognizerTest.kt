@@ -118,6 +118,8 @@ class OpenCvGuideRecognizerTest {
             }
         }
         val result = recognizer.inspectBitmap(image, bounds)
+        // The fixture contains 72 drawn rings; Hough may return a different count.
+        // What matters is that irrelevant decorations cannot suppress a valid guide.
         assertNotNull("Unrelated circular clutter must not veto the guide: ${result.reason}",
             result.guide)
         assertEquals(220f, result.guide!!.origin.x, 6f)

@@ -59,7 +59,7 @@ class GuideStabilityGate {
         return if (consecutive >= REQUIRED_FRAMES) result.copy(
             reason = "Не уверен: направление не проверено · 3 отражения"
         ) else result.copy(
-            reason = "Не уверен: подтверждение линии $consecutive/$REQUIRED_FRAMES"
+            guide = null, reason = "Подтверждение линии: $consecutive/$REQUIRED_FRAMES"
         )
     }
 

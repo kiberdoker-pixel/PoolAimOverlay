@@ -242,8 +242,10 @@ class OpenCvGuideRecognizer {
             }
             if (unique.size != 1) return none(if (unique.isEmpty())
                 "Линия не подтверждена: линий=${lines.rows()}, " +
-                    "окружностей=$totalCircles, рядом=$nearLineCircles, шаров=${anchors.size}"
-                else "Неоднозначное направление линии")
+                    "окружностей=$totalCircles, рядом=$nearLineCircles, шаров=${anchors.size}, " +
+                    "гипотез=0"
+                else "Неоднозначное направление линии: гипотез=${hypotheses.size}, " +
+                    "направлений=${unique.size}, шаров=${anchors.size}")
             val candidate = unique.single()
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(candidate.anchor.center),

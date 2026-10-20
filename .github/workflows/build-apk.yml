@@ -2,10 +2,14 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, aimx-ai]
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -22,8 +26,8 @@ jobs:
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Validate project files
         run: python3 tools/preflight.py
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+      - name: Unit tests and compile both APKs
+        run: gradle --no-daemon --stacktrace testDebugUnitTest assembleDebug assembleDebugAndroidTest
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -31,3 +35,25 @@ jobs:
           retention-days: 14
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+      - name: Enable emulator hardware acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Exercise OpenCV on synthetic Android frames
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recognition-test-results
+          retention-days: 14
+          path: |
+            app/build/reports/tests/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          if-no-files-found: warn

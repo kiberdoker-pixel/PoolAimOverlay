@@ -19,6 +19,13 @@ internal class TableBoundsOverlay(private val context: Context) {
     companion object {
         @Volatile var bounds = floatArrayOf(.19f, .21f, .81f, .92f)
             private set
+        @Volatile var editing = false
+            private set
+
+        fun snapshot(): com.poolaim.overlay.recognition.TableBounds {
+            val value = bounds
+            return com.poolaim.overlay.recognition.TableBounds(value[0], value[1], value[2], value[3])
+        }
     }
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = context.getSharedPreferences("aimx_table_bounds", Context.MODE_PRIVATE)
@@ -60,6 +67,7 @@ internal class TableBoundsOverlay(private val context: Context) {
 
     private fun openEditor() {
         if (editor != null) return
+        editing = true
         editor = BoundsView(context) { closeEditor(true) }.also {
             wm.addView(it, params(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -82,6 +90,7 @@ internal class TableBoundsOverlay(private val context: Context) {
             wm.removeView(it)
         }
         editor = null
+        editing = false
         button?.text = "Стол"
     }
 

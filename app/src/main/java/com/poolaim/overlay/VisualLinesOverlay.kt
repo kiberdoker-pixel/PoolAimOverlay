@@ -27,7 +27,8 @@ internal class VisualLinesOverlay(private val context: Context) {
             else @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -121,8 +122,9 @@ internal class VisualLinesOverlay(private val context: Context) {
             if (TableBoundsOverlay.editing) {
                 drawStatus = "редактирование рамки"; return
             }
-            // Report a capture/overlay coordinate mismatch rather than silently hiding the line.
-            if (height <= 0 || kotlin.math.abs(width.toFloat() / height - r.width.toFloat() / r.height) > .03f) {
+            // Use the actual view dimensions for independent X/Y mapping; a system inset
+            // must not suppress an otherwise valid trajectory.
+            if (width <= 0 || height <= 0) {
                 drawStatus = "размер захвата ${r.width}x${r.height}, слой ${width}x${height}"
                 return
             }
@@ -141,7 +143,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 bottom = b.bottom * r.height,
                 maxBounces = 3
             )
-            drawStatus = if (points.size >= 2) "отрисовка: ${points.size - 1} отрезка" else "математика: нет отрезков"
+            drawStatus = if (points.size >= 2) "отрисовка: ${points.size - 1} отрезка · ${r.width}x${r.height} → ${width}x${height}" else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
             val left = b.left * r.width * sx

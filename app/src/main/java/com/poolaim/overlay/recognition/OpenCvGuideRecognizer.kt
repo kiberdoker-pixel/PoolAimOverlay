@@ -181,69 +181,90 @@ class OpenCvGuideRecognizer {
                 radius * 3.0, 110.0, 24.0,
                 max(4, (radius * .60).roundToInt()),
                 max(6, (radius * 1.45).roundToInt()))
-            if (circles.empty()) return none("Контактный кружок не найден")
-            data class Candidate(val origin: PixelPoint, val tip: PixelPoint, val quality: Double)
+
+            // Use the long incoming cue guide to locate the impact marker.
+            // The target ball is a filled, contrasting disk just beyond that marker.
+            // A marker alone, including one at a rail, is never sufficient.
+            data class Candidate(val target: PixelPoint, val direction: PixelPoint,
+                val score: Double, val marker: PixelPoint)
             val candidates = mutableListOf<Candidate>()
-            for (i in 0 until circles.cols()) {
-                val c = circles.get(0, i) ?: continue
-                if (c.size < 3) continue
-                val center = PixelPoint(c[0], c[1])
-                val cr = c[2]
-                // The incoming cue guide is long and terminates at the ghost marker.
-                val incoming = segments.filter { it.third > shortSide * .20 }
-                    .mapNotNull { seg ->
-                        val da = hypot(seg.first.x - center.x, seg.first.y - center.y)
-                        val db = hypot(seg.second.x - center.x, seg.second.y - center.y)
-                        val near = if (da < db) seg.first else seg.second
-                        val far = if (da < db) seg.second else seg.first
-                        if (min(da, db) > cr * 2.0) null else Triple(near, far, seg.third)
-                    }.maxByOrNull { it.third } ?: continue
-                val inX = incoming.first.x - incoming.second.x
-                val inY = incoming.first.y - incoming.second.y
-                val inLen = hypot(inX, inY)
-                if (inLen < 1.0) continue
-                // Select a short branch radiating from the marker in the incoming
-                // travel hemisphere. Avoid extending the long cue line backwards.
-                val targets = (0 until circles.cols()).mapNotNull { j ->
-                    val v = circles.get(0, j) ?: return@mapNotNull null
-                    if (v.size < 3 || j == i) return@mapNotNull null
-                    val p = PixelPoint(v[0], v[1])
-                    val d = hypot(p.x - center.x, p.y - center.y)
-                    if (d < cr * 1.3 || d > cr * 3.2 || roundAnchorSupport(raster, p, v[2]) < .55) null else p
-                }
-                val target = targets.minByOrNull { hypot(it.x - center.x, it.y - center.y) } ?: continue
-                val objectX = target.x - center.x
-                val objectY = target.y - center.y
-                val objectLength = hypot(objectX, objectY)
-                val branches = segments.mapNotNull { seg ->
-                    if (seg.third > shortSide * .19 || seg.third < cr * .9) return@mapNotNull null
-                    val da = hypot(seg.first.x - target.x, seg.first.y - target.y)
-                    val db = hypot(seg.second.x - target.x, seg.second.y - target.y)
-                    val near = if (da < db) seg.first else seg.second
-                    val far = if (da < db) seg.second else seg.first
-                    if (min(da, db) > cr * 2.2) return@mapNotNull null
-                    val vx = far.x - near.x
-                    val vy = far.y - near.y
-                    val length = hypot(vx, vy)
-                    if (length < cr * 1.1) return@mapNotNull null
-                    val alignment = (vx * objectX + vy * objectY) / (length * objectLength)
-                    if (alignment < .90) return@mapNotNull null
-                    Candidate(target, PixelPoint(target.x + objectX / objectLength * length,
-                        target.y + objectY / objectLength * length), alignment)
-                }
-                val best = branches.maxByOrNull { it.quality } ?: continue
-                candidates.add(best)
+            var longGuides = 0
+            var coloredTargets = 0
+            var geometryPass = 0
+            val markers = (0 until circles.cols()).mapNotNull { i ->
+                val c = circles.get(0, i)
+                if (c == null || c.size < 3) null else PixelPoint(c[0], c[1])
             }
-            val best = candidates.maxByOrNull { it.quality }
-                ?: return none("Нет короткой исходящей линии у контактного кружка")
+            val radiusPx = shortSide * .020
+            for (seg in segments.filter { it.third > shortSide * .20 }) {
+                longGuides++
+                for ((impact, cue) in listOf(seg.first to seg.second, seg.second to seg.first)) {
+                    // Incoming direction points from cue ball to contact marker.
+                    val ix = (impact.x - cue.x) / seg.third
+                    val iy = (impact.y - cue.y) / seg.third
+                    // A real ghost ring must be at the far end of the cue guide.
+                    val marker = markers.minByOrNull { hypot(it.x - impact.x, it.y - impact.y) }
+                        ?: continue
+                    if (hypot(marker.x - impact.x, marker.y - impact.y) > radiusPx * 1.7) continue
+                    // Scan the immediate collision neighborhood, not the whole table.
+                    // Balls can be offset laterally by almost one radius on a thin hit.
+                    for (forward in 1..5) {
+                        for (side in -3..3) {
+                            val along = radiusPx * (1.15 + forward * .30)
+                            val across = radiusPx * side * .30
+                            val target = PixelPoint(marker.x + ix * along - iy * across,
+                                marker.y + iy * along + ix * across)
+                            if (target.x < radiusPx * 2 || target.y < radiusPx * 2 ||
+                                target.x > raster.width - radiusPx * 2 ||
+                                target.y > raster.height - radiusPx * 2) continue
+                            val fill = roundAnchorSupport(raster, target, radiusPx)
+                            if (fill < .66) continue
+                            val centerRgb = rgb(raster, target.x, target.y) ?: continue
+                            val colorRange = (centerRgb.maxOrNull() ?: 0) -
+                                (centerRgb.minOrNull() ?: 0)
+                            // Reject felt and monochrome ghost markers.
+                            val felt = rgb(raster, target.x + radiusPx * 2.5,
+                                target.y + radiusPx * 2.5) ?: continue
+                            val colorDiff = centerRgb.indices.sumOf {
+                                kotlin.math.abs(centerRgb[it] - felt[it])
+                            }
+                            if (colorRange < 65 && colorDiff < 115) continue
+                            coloredTargets++
+                            val dx = target.x - marker.x
+                            val dy = target.y - marker.y
+                            val dist = hypot(dx, dy)
+                            if (dist < radiusPx * 1.4 || dist > radiusPx * 2.8) continue
+                            if ((dx * ix + dy * iy) / dist < .20) continue
+                            geometryPass++
+                            // Geometric line of centers is the object ball's motion,
+                            // not the cue ball's post-collision deflection.
+                            val direction = PixelPoint(dx / dist, dy / dist)
+                            val score = fill + colorDiff.coerceAtMost(300) / 1000.0 -
+                                kotlin.math.abs(dist - radiusPx * 2) / (radiusPx * 8)
+                            candidates.add(Candidate(target, direction, score, marker))
+                        }
+                    }
+                }
+            }
+            val best = candidates.maxByOrNull { it.score }
+                ?: return none("Нет прицельного шара · входящих=$longGuides · цветных=$coloredTargets · геометрия=$geometryPass · кругов=${markers.size}")
+            // Multiple nearby scan samples represent one target, but disjoint targets
+            // are ambiguous and must not yield an arbitrary prediction.
+            val conflicting = candidates.any {
+                hypot(it.target.x - best.target.x, it.target.y - best.target.y) > radiusPx * 2.0 &&
+                    it.score > best.score - .07
+            }
+            if (conflicting) return none("Несколько целей · кандидатов=${candidates.size}")
             val guide = RecognizedGuide(
-                origin = raster.capturePoint(best.origin),
-                tip = raster.capturePoint(best.tip),
-                ballRadius = (shortSide * .02).toFloat(),
+                origin = raster.capturePoint(best.target),
+                tip = raster.capturePoint(PixelPoint(
+                    best.target.x + best.direction.x * radiusPx * 5,
+                    best.target.y + best.direction.y * radiusPx * 5)),
+                ballRadius = (radiusPx * raster.scaleX).toFloat(),
                 score = .95f
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Цель найдена · кругов=${circles.cols()} · линий=${segments.size} · вариантов=${candidates.size} · 3 отражения")
+                "Цель по геометрии · входящих=$longGuides · цветных=$coloredTargets · геометрия=$geometryPass · 3 отражения")
         } finally {
             circles.release()
             gray.release()

@@ -51,6 +51,11 @@ internal class VisualLinesOverlay(private val context: Context) {
     }
 
     private class LinesView(context: Context) : View(context) {
+        init {
+            // Transparent pixels must never cover the game with opaque black.
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.CYAN
             alpha = 255

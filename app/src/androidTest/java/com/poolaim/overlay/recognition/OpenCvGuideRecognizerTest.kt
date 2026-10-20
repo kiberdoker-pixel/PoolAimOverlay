@@ -128,6 +128,7 @@ class OpenCvGuideRecognizerTest {
 
     @Test
     fun neutralGrayGameGuideIsRecognized() {
+        // Regression from real game screenshots: a neutral gray guide is not pure white.
         val image = scene {
             ball(220f, 180f)
             line(230f, 180f, 285f, 180f, Color.rgb(165, 165, 165))

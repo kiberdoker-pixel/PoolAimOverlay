@@ -204,6 +204,17 @@ class OpenCvGuideRecognizer {
                 if (inLen < 1.0) continue
                 // Select a short branch radiating from the marker in the incoming
                 // travel hemisphere. Avoid extending the long cue line backwards.
+                val targets = (0 until circles.cols()).mapNotNull { j ->
+                    val v = circles.get(0, j) ?: return@mapNotNull null
+                    if (v.size < 3 || j == i) return@mapNotNull null
+                    val p = PixelPoint(v[0], v[1])
+                    val d = hypot(p.x - center.x, p.y - center.y)
+                    if (d < cr * 1.3 || d > cr * 3.2 || roundAnchorSupport(raster, p, v[2]) < .55) null else p
+                }
+                val target = targets.minByOrNull { hypot(it.x - center.x, it.y - center.y) } ?: continue
+                val objectX = target.x - center.x
+                val objectY = target.y - center.y
+                val objectLength = hypot(objectX, objectY)
                 val branches = segments.mapNotNull { seg ->
                     if (seg.third > shortSide * .19 || seg.third < cr * .9) return@mapNotNull null
                     val da = hypot(seg.first.x - center.x, seg.first.y - center.y)
@@ -215,9 +226,10 @@ class OpenCvGuideRecognizer {
                     val vy = far.y - center.y
                     val length = hypot(vx, vy)
                     if (length < cr * 1.1) return@mapNotNull null
-                    val alignment = (vx * inX + vy * inY) / (length * inLen)
-                    if (alignment < .15) return@mapNotNull null
-                    Candidate(center, far, alignment)
+                    val alignment = (vx * objectX + vy * objectY) / (length * objectLength)
+                    if (alignment < .90) return@mapNotNull null
+                    Candidate(target, PixelPoint(target.x + objectX / objectLength * length,
+                        target.y + objectY / objectLength * length), alignment)
                 }
                 val best = branches.maxByOrNull { it.quality } ?: continue
                 candidates.add(best)
@@ -231,7 +243,7 @@ class OpenCvGuideRecognizer {
                 score = .95f
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Не уверен: ветвь у контактного кружка · 3 отражения")
+                "Цель найдена · направление от прицельного шара · 3 отражения")
         } finally {
             circles.release()
             gray.release()

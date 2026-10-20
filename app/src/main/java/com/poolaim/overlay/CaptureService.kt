@@ -182,7 +182,9 @@ class CaptureService : Service() {
                         if (frameCount == 1L || frameCount % 30L == 0L) {
                             val msg = "Кадров: $frameCount · $detectorResult"
                             report(msg)
-                            mainHandler.post { overlay?.update(msg) }
+                            mainHandler.post {
+                                overlay?.update("$msg\nРисование: ${visualOverlay?.drawStatus() ?: "нет окна"}")
+                            }
                             getSystemService(NotificationManager::class.java)
                                 .notify(NOTIFICATION_ID, notification(msg))
                         }

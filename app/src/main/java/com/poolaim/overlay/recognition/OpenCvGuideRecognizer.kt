@@ -283,19 +283,19 @@ class OpenCvGuideRecognizer {
                 val db = hypot(seg.second.x - refined.x, seg.second.y - refined.y)
                 val near = if (da < db) seg.first else seg.second
                 val far = if (da < db) seg.second else seg.first
-                if (min(da, db) > radiusPx * 2.1) continue
+                if (min(da, db) > radiusPx * 1.35) continue
                 val vx = (far.x - near.x) / seg.third
                 val vy = (far.y - near.y) / seg.third
                 val cosine = vx * gx + vy * gy
-                if (cosine < kotlin.math.cos(18.0 * PI / 180.0)) continue
+                if (cosine < kotlin.math.cos(12.0 * PI / 180.0)) continue
                 val error = kotlin.math.acos(cosine.coerceIn(-1.0, 1.0)) * 180.0 / PI
                 if (error < bestBranchError) {
                     bestBranchError = error
                     bestBranch = PixelPoint(vx, vy)
                 }
             }
-            val chosen = if (bestBranch != null && bestBranchError <= 12.0)
-                bestBranch!! else PixelPoint(gx, gy)
+            val chosen = if (bestBranch != null && bestBranchError <= 8.0)
+                bestBranch!! else return none("Нет надёжной ветви прицельного шара")
             val geomAngle = Math.toDegrees(kotlin.math.atan2(gy, gx)).roundToInt()
             val branchAngle = bestBranch?.let {
                 Math.toDegrees(kotlin.math.atan2(it.y, it.x)).roundToInt().toString() + "°"

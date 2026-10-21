@@ -284,6 +284,19 @@ class OpenCvGuideRecognizer {
                 val near = if (da < db) seg.first else seg.second
                 val far = if (da < db) seg.second else seg.first
                 if (min(da, db) > radiusPx * 1.35) continue
+                // Reject a short Hough fragment of the incoming cue guide.
+                // An outgoing branch must begin on the target's far hemisphere,
+                // away from the impact marker, and visibly extend beyond the ball.
+                val fromMarkerX = near.x - best.marker.x
+                val fromMarkerY = near.y - best.marker.y
+                val markerToTarget = hypot(refined.x - best.marker.x,
+                    refined.y - best.marker.y)
+                if (markerToTarget < radiusPx * 1.4) continue
+                val farMarkerDistance = hypot(far.x - best.marker.x,
+                    far.y - best.marker.y)
+                val nearMarkerDistance = hypot(fromMarkerX, fromMarkerY)
+                if (farMarkerDistance <= nearMarkerDistance + radiusPx * .65) continue
+                if (hypot(far.x - refined.x, far.y - refined.y) < radiusPx * 1.5) continue
                 val vx = (far.x - near.x) / seg.third
                 val vy = (far.y - near.y) / seg.third
                 val cosine = vx * gx + vy * gy

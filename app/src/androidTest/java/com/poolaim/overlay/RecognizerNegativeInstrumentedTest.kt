@@ -1,5 +1,7 @@
 package com.poolaim.overlay
 
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -17,10 +19,39 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RecognizerNegativeInstrumentedTest {
     @Test
+    fun incomingCueGuideWithoutOutgoingBranchMustNotGenerateTrajectory() {
+        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(Color.rgb(16, 125, 162))
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            paint.color = Color.WHITE
+            paint.strokeWidth = 2f
+            canvas.drawLine(120f, 275f, 320f, 170f, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2f
+            canvas.drawCircle(320f, 170f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.YELLOW
+            canvas.drawCircle(341f, 158f, 10f, paint)
+            assertNoGuide(bitmap)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
     fun blankTableMustNotGenerateTrajectory() {
         val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
         try {
             bitmap.eraseColor(Color.rgb(15, 95, 65))
+            assertNoGuide(bitmap)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun assertNoGuide(bitmap: Bitmap) {
             // Keep the actual recognizer in the loop. Obtain the TableBounds
             // model through reflection to avoid coupling to its package name.
             val recognizer = OpenCvGuideRecognizer()
@@ -39,8 +70,5 @@ class RecognizerNegativeInstrumentedTest {
             assertNull("No aiming evidence: must not draw a line", guide)
             val reason = result.javaClass.getMethod("getReason").invoke(result).toString()
             assertTrue("Unexpected result reason: $reason", reason.isNotBlank())
-        } finally {
-            bitmap.recycle()
-        }
     }
 }

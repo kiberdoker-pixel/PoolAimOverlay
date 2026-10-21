@@ -143,6 +143,53 @@ class RecognizerNegativeInstrumentedTest {
     }
 
     @Test
+    fun attachedOutgoingGuideShouldProduceForwardObjectBallTrajectory() {
+        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(Color.rgb(16, 125, 162))
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                strokeWidth = 2f
+            }
+            // A long incoming cue guide terminates at a hollow impact marker.
+            canvas.drawLine(110f, 270f, 315f, 175f, paint)
+            paint.style = Paint.Style.STROKE
+            canvas.drawCircle(315f, 175f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.YELLOW
+            canvas.drawCircle(336f, 164f, 10f, paint)
+            // The short white guide starts at the far edge of the target ball
+            // and points away from the impact marker.
+            paint.color = Color.WHITE
+            canvas.drawLine(345f, 159f, 389f, 136f, paint)
+
+            val recognizer = OpenCvGuideRecognizer()
+            val method = recognizer.javaClass.methods.single {
+                it.name == "inspectBitmap" && it.parameterTypes.size == 2
+            }
+            val ctor = method.parameterTypes[1].declaredConstructors.first {
+                it.parameterTypes.size == 4 &&
+                    it.parameterTypes.all { type -> type == Float::class.javaPrimitiveType }
+            }
+            ctor.isAccessible = true
+            val bounds = ctor.newInstance(0.05f, 0.05f, 0.95f, 0.95f)
+            val result = method.invoke(recognizer, bitmap, bounds)
+            val reason = result.javaClass.getMethod("getReason").invoke(result).toString()
+            assertTrue("OpenCV unavailable: $reason", !reason.contains("OpenCV", ignoreCase = true))
+            val guide = result.javaClass.getMethod("getGuide").invoke(result)
+            assertTrue("Attached outgoing guide should be detected: $reason", guide != null)
+            val origin = guide!!.javaClass.getMethod("getOrigin").invoke(guide)
+            val tip = guide.javaClass.getMethod("getTip").invoke(guide)
+            val ox = (origin.javaClass.getMethod("getX").invoke(origin) as Number).toFloat()
+            val tx = (tip.javaClass.getMethod("getX").invoke(tip) as Number).toFloat()
+            assertTrue("Outgoing direction must be forward, not reversed", tx > ox)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
     fun blankTableMustNotGenerateTrajectory() {
         val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
         try {

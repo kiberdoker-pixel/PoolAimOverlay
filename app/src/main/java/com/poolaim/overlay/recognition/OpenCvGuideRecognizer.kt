@@ -307,7 +307,11 @@ class OpenCvGuideRecognizer {
                     refined.x + chosen.x * radiusPx * 5,
                     refined.y + chosen.y * radiusPx * 5)),
                 ballRadius = (radiusPx * raster.scaleX).toFloat(),
-                score = .95f
+                // Evidence score, not a calibrated probability. Avoid reporting a
+                // fixed 95% for every accepted frame regardless of guide alignment.
+                score = (best.score.coerceIn(0.0, 1.0) *
+                    (1.0 - bestBranchError / 12.0).coerceIn(0.0, 1.0) *
+                    centerScore.coerceIn(0.0, 1.0)).toFloat()
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
                 "Цель · угол геом=$geomAngle° · ветвь=$branchAngle · Δ=$delta · уточнение=${(hypot(refined.x-best.target.x,refined.y-best.target.y)*raster.scaleX).roundToInt()}px · 3 отражения")

@@ -7,6 +7,7 @@ import com.poolaim.overlay.recognition.OpenCvGuideRecognizer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -39,6 +40,10 @@ class RealMatchFrameInstrumentedTest {
             assertNotNull(result)
             val reason = result!!.javaClass.getMethod("getReason").invoke(result).toString()
             assertFalse("OpenCV unavailable: $reason", reason.contains("OpenCV", ignoreCase = true))
+            // This 32x18 fixture has destroyed the thin aiming guide: the
+            // recognizer must abstain rather than hallucinate a trajectory.
+            val guide = result.javaClass.getMethod("getGuide").invoke(result)
+            assertNull("No reliable aiming evidence in a 32x18 thumbnail: $reason", guide)
         } finally {
             frame.recycle()
             thumb.recycle()

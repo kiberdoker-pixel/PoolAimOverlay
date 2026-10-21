@@ -117,6 +117,32 @@ class RecognizerNegativeInstrumentedTest {
     }
 
     @Test
+    fun incomingGuideAndColoredBallWithDisconnectedParallelBranchMustBeRejected() {
+        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(Color.rgb(16, 125, 162))
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                strokeWidth = 2f
+            }
+            canvas.drawLine(110f, 270f, 315f, 175f, paint)
+            paint.style = Paint.Style.STROKE
+            canvas.drawCircle(315f, 175f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.YELLOW
+            canvas.drawCircle(336f, 164f, 10f, paint)
+            // A line that looks like an outgoing branch but begins far beyond
+            // the ball must not count as connected evidence.
+            paint.color = Color.WHITE
+            canvas.drawLine(385f, 138f, 427f, 116f, paint)
+            assertNoGuide(bitmap)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
     fun blankTableMustNotGenerateTrajectory() {
         val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
         try {

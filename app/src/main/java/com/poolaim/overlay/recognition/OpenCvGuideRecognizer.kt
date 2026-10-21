@@ -217,8 +217,12 @@ class OpenCvGuideRecognizer {
                             if (target.x < radiusPx * 2 || target.y < radiusPx * 2 ||
                                 target.x > raster.width - radiusPx * 2 ||
                                 target.y > raster.height - radiusPx * 2) continue
+                            // The scan samples positions *inside* the object ball,
+                            // not necessarily its exact centre. A strict circular-edge
+                            // score here rejects valid off-centre samples before the
+                            // centre-refinement stage can correct them.
                             val fill = roundAnchorSupport(raster, target, radiusPx)
-                            if (fill < .66) continue
+                            if (fill < .35) continue
                             val centerRgb = rgb(raster, target.x, target.y) ?: continue
                             val colorRange = (centerRgb.maxOrNull() ?: 0) -
                                 (centerRgb.minOrNull() ?: 0)

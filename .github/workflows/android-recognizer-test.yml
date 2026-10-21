@@ -25,6 +25,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
       # GitHub Ubuntu runners already ship Android SDK command-line tools.
       # setup-android@v3 currently attempts to install removed SDK package 'tools'.
       - name: Check preinstalled Android SDK
@@ -44,7 +47,7 @@ jobs:
           target: google_apis
           profile: pixel_6
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./gradlew :app:connectedDebugAndroidTest --stacktrace
+          script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
       - name: Upload instrumented test reports
         if: always()
         uses: actions/upload-artifact@v4

@@ -77,6 +77,8 @@ internal class VisualLinesOverlay(private val context: Context) {
         private var held = 0
         private var switches = 0
         private var lastDecision = "ожидание"
+        private var lastSeenAt = 0L
+        private var rejectedReversals = 0
         private val expire = Runnable { clear() }
 
         fun update(value: FrameGuideResult, capturedAtMs: Long) {
@@ -93,10 +95,12 @@ internal class VisualLinesOverlay(private val context: Context) {
                 pending = null
                 pendingCount = 0
                 lastDecision = "смена рамки"
+                lastSeenAt = 0L
             } else if (value.guide != null && age in 0 until MAX_AGE_MS &&
                 capturedAtMs >= capturedAt) {
                 val old = result?.guide
                 val fresh = value.guide
+                lastSeenAt = now
                 if (old == null) {
                     result = value
                     capturedAt = capturedAtMs
@@ -109,7 +113,15 @@ internal class VisualLinesOverlay(private val context: Context) {
                     val b = kotlin.math.atan2((fresh.tip.y-fresh.origin.y).toDouble(),
                         (fresh.tip.x-fresh.origin.x).toDouble())
                     val angle = kotlin.math.abs(kotlin.math.atan2(kotlin.math.sin(b-a),kotlin.math.cos(b-a)))
-                    if (shift < fresh.ballRadius*.35 && angle < Math.toRadians(5.0)) {
+                    // Opposite directions on an unchanged target are a CV ambiguity,
+                    // not an instantaneous 180-degree aim rotation.
+                    if (shift < fresh.ballRadius*.65 && angle > Math.toRadians(125.0)) {
+                        rejectedReversals++
+                        held++
+                        pending = null
+                        pendingCount = 0
+                        lastDecision = "отклонён разворот ${Math.toDegrees(angle).toInt()}°"
+                    } else if (shift < fresh.ballRadius*.35 && angle < Math.toRadians(5.0)) {
                         fun mix(a: Float,b: Float) = a*.7f+b*.3f
                         result = value.copy(guide = fresh.copy(
                             origin = fresh.origin.copy(x=mix(old.origin.x,fresh.origin.x),
@@ -148,14 +160,16 @@ internal class VisualLinesOverlay(private val context: Context) {
                         }
                     }
                 }
-            } else if (result != null && now - capturedAt >= MAX_AGE_MS) {
+            } else if (result != null && (now - capturedAt >= MAX_AGE_MS ||
+                    (lastSeenAt > 0 && now - lastSeenAt > LOST_TARGET_MS))) {
                 result = null
                 pending = null
                 pendingCount = 0
-                lastDecision = "истёк срок"
+                lastDecision = "цель потеряна / истёк срок"
             }
             if (result?.guide != null) {
-                val remaining = MAX_AGE_MS - (SystemClock.elapsedRealtime() - capturedAt)
+                val remaining = minOf(MAX_AGE_MS - (SystemClock.elapsedRealtime() - capturedAt),
+                    if (lastSeenAt > 0) LOST_TARGET_MS - (SystemClock.elapsedRealtime() - lastSeenAt) else MAX_AGE_MS)
                 if (remaining > 0) postDelayed(expire, remaining)
             }
             invalidate()
@@ -166,6 +180,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             result = null
             pending = null
             pendingCount = 0
+            lastSeenAt = 0L
             drawStatus = "линия очищена"
             invalidate()
         }
@@ -182,7 +197,8 @@ internal class VisualLinesOverlay(private val context: Context) {
             if (r.width <= 0 || r.height <= 0 || guide.score < .90f) {
                 drawStatus = "неверный кадр или оценка"; return
             }
-            if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS) {
+            if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS ||
+                (lastSeenAt > 0 && SystemClock.elapsedRealtime() - lastSeenAt >= LOST_TARGET_MS)) {
                 drawStatus = "линия устарела"; return
             }
             if (TableBoundsOverlay.editing) {
@@ -220,7 +236,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 (guide.tip.x - guide.origin.x).toDouble()
             )).toInt()
             drawStatus = if (points.size >= 2)
-                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps · удержано $held · смен $switches · $lastDecision"
+                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps · удержано $held · смен $switches · разворотов $rejectedReversals · возраст ${SystemClock.elapsedRealtime()-capturedAt}мс · $lastDecision"
             else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height
@@ -251,6 +267,9 @@ internal class VisualLinesOverlay(private val context: Context) {
             postInvalidateDelayed(50L)
         }
 
-        companion object { private const val MAX_AGE_MS = 1400L }
+        companion object {
+            private const val MAX_AGE_MS = 900L
+            private const val LOST_TARGET_MS = 420L
+        }
     }
 }

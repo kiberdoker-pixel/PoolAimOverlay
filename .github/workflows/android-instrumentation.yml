@@ -25,7 +25,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Check Android SDK tools
+        run: |
+          test -n "$ANDROID_HOME"
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
       - name: Enable KVM for emulator
         run: |
           sudo chmod 666 /dev/kvm
@@ -38,7 +44,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+          script: gradle --no-daemon --stacktrace connectedDebugAndroidTest
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4

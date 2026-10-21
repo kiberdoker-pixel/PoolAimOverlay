@@ -8,6 +8,7 @@ that Android's OpenCV recognizer passed on-device.
 """
 import argparse
 import csv
+import json
 from pathlib import Path
 import cv2
 from PIL import Image, ImageDraw
@@ -40,16 +41,23 @@ def main():
     if args.interval <= 0 or args.width < 100:
         parser.error("interval must be positive and width >= 100")
     args.output.mkdir(parents=True, exist_ok=True)
+    labels = {}
+    label_file = Path(__file__).with_name("review_scenes.json")
+    if label_file.exists():
+        for scene in json.loads(label_file.read_text(encoding="utf-8")):
+            labels[(scene["video"], float(scene["second"]))] = scene
     tiles, records = [], []
     for video in args.videos:
         for second, img in sample(video, args.interval, args.width):
             filename = f"{video.stem}_{int(second * 1000):08d}.jpg"
             img.save(args.output / filename, quality=90)
-            records.append((video.name, second, filename, "unreviewed"))
+            scene = labels.get((video.name, second))
+            status = scene["scene"] if scene else "unreviewed"
+            records.append((video.name, second, filename, status))
             tile = img.copy()
             draw = ImageDraw.Draw(tile)
             draw.rectangle((0, 0, min(img.width, 250), 24), fill="#111111")
-            draw.text((6, 5), f"{video.name} / {second:.1f}s", fill="white")
+            draw.text((6, 5), f"{video.name} / {second:.1f}s / {status}", fill="white")
             tiles.append(tile)
     with (args.output / "index.csv").open("w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
@@ -63,6 +71,7 @@ def main():
             sheet.paste(tile, ((i % cols) * tile.width, (i // cols) * tile.height))
         sheet.save(args.output / "contact_sheet.jpg", quality=85)
     print(f"Extracted {len(records)} frames to {args.output}")
+    print("IMPORTANT: scene labels are visual review only, NOT ground-truth target coordinates.")
     print("IMPORTANT: visual review is not a native recognizer test.")
 
 if __name__ == "__main__":

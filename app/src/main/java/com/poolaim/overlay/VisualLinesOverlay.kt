@@ -96,15 +96,36 @@ internal class VisualLinesOverlay(private val context: Context) {
                 pendingCount = 0
                 lastDecision = "смена рамки"
                 lastSeenAt = 0L
+            } else if (value.guide == null) {
+                // Accuracy-first: never keep a path after the detector loses its target.
+                result = null
+                pending = null
+                pendingCount = 0
+                lastSeenAt = 0L
+                lastDecision = "цель не подтверждена — линия скрыта"
             } else if (value.guide != null && age in 0 until MAX_AGE_MS &&
                 capturedAtMs >= capturedAt) {
                 val old = result?.guide
                 val fresh = value.guide
                 lastSeenAt = now
                 if (old == null) {
-                    result = value
-                    capturedAt = capturedAtMs
-                    lastDecision = "первая цель"
+                    val candidate = pending?.guide
+                    val match = candidate != null &&
+                        kotlin.math.hypot((candidate.origin.x-fresh.origin.x).toDouble(),
+                            (candidate.origin.y-fresh.origin.y).toDouble()) < fresh.ballRadius*.35 &&
+                        kotlin.math.hypot((candidate.tip.x-fresh.tip.x).toDouble(),
+                            (candidate.tip.y-fresh.tip.y).toDouble()) < fresh.ballRadius*.65
+                    pendingCount = if (match) pendingCount + 1 else 1
+                    pending = value
+                    if (pendingCount >= 3) {
+                        result = value
+                        capturedAt = capturedAtMs
+                        pending = null
+                        pendingCount = 0
+                        lastDecision = "цель подтверждена 3/3"
+                    } else {
+                        lastDecision = "ожидание точной цели $pendingCount/3"
+                    }
                 } else {
                     val shift = kotlin.math.hypot((fresh.origin.x - old.origin.x).toDouble(),
                         (fresh.origin.y - old.origin.y).toDouble())
@@ -116,6 +137,8 @@ internal class VisualLinesOverlay(private val context: Context) {
                     // Opposite directions on an unchanged target are a CV ambiguity,
                     // not an instantaneous 180-degree aim rotation.
                     if (shift < fresh.ballRadius*.65 && angle > Math.toRadians(125.0)) {
+                        result = null
+                        capturedAt = 0L
                         rejectedReversals++
                         held++
                         pending = null
@@ -154,9 +177,11 @@ internal class VisualLinesOverlay(private val context: Context) {
                             switches++
                             lastDecision = if (targetSwitch) "новая цель подтверждена" else "поворот подтверждён"
                         } else {
+                            // Do not display the previous aim while the new direction is pending.
+                            result = null
                             jumps++
                             held++
-                            lastDecision = "удержание: $pendingCount/$required · сдвиг ${shift.toInt()}px · угол ${Math.toDegrees(angle).toInt()}°"
+                            lastDecision = "ожидание: $pendingCount/$required · сдвиг ${shift.toInt()}px · угол ${Math.toDegrees(angle).toInt()}°"
                         }
                     }
                 }

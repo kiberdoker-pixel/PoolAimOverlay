@@ -70,5 +70,7 @@ class RecognizerNegativeInstrumentedTest {
             assertNull("No aiming evidence: must not draw a line", guide)
             val reason = result.javaClass.getMethod("getReason").invoke(result).toString()
             assertTrue("Unexpected result reason: $reason", reason.isNotBlank())
+            assertTrue("OpenCV was unavailable; negative test is inconclusive: $reason",
+                !reason.contains("OpenCV", ignoreCase = true))
     }
 }

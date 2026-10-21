@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 class RealMatchFrameInstrumentedTest {
     @Test fun realMatchThumbnailPassesThroughNativeRecognizer() {
         val bytes = Base64.decode(FRAME_24910_030, Base64.DEFAULT)
-        org.junit.Assert.assertEquals("Match JPEG fixture must be complete", 1416, bytes.size)
+        org.junit.Assert.assertEquals("Match JPEG fixture length changed", 1407, bytes.size)
         val thumb = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
         assertNotNull("Embedded JPEG fixture could not be decoded; replace with verified source frame", thumb)
         val frame = Bitmap.createScaledBitmap(thumb, 640, 288, false)

@@ -18,9 +18,14 @@ def read_csv(path):
 
 def evaluate(truth, predictions, max_origin_error, max_angle_error):
     lookup = {(r["video"], r["timestamp_seconds"]): r for r in predictions}
+    truth_keys = [(r["video"], r["timestamp_seconds"]) for r in truth]
+    if len(set(truth_keys)) != len(truth_keys):
+        raise ValueError("Duplicate ground-truth frame keys")
     if len(lookup) != len(predictions):
         raise ValueError("Duplicate prediction frame keys")
     total, passed, failures = 0, 0, []
+    if not truth:
+        raise ValueError("Empty ground truth: refusing to report a pass")
     for row in truth:
         key = (row["video"], row["timestamp_seconds"])
         if key not in lookup:
@@ -55,6 +60,8 @@ def evaluate(truth, predictions, max_origin_error, max_angle_error):
             passed += 1
         else:
             failures.append((key, reason))
+    for key in lookup.keys() - set(truth_keys):
+        failures.append((key, "unannotated prediction frame"))
     return total, passed, failures
 
 def main():

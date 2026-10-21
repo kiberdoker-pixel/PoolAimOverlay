@@ -74,6 +74,9 @@ internal class VisualLinesOverlay(private val context: Context) {
         private var pendingCount = 0
         private var smoothed = 0
         private var jumps = 0
+        private var held = 0
+        private var switches = 0
+        private var lastDecision = "ожидание"
         private val expire = Runnable { clear() }
 
         fun update(value: FrameGuideResult, capturedAtMs: Long) {
@@ -87,6 +90,9 @@ internal class VisualLinesOverlay(private val context: Context) {
                 (previous != null && (previous.width != value.width ||
                     previous.height != value.height || previous.bounds != value.bounds))) {
                 result = null
+                pending = null
+                pendingCount = 0
+                lastDecision = "смена рамки"
             } else if (value.guide != null && age in 0 until MAX_AGE_MS &&
                 capturedAtMs >= capturedAt) {
                 val old = result?.guide
@@ -94,6 +100,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 if (old == null) {
                     result = value
                     capturedAt = capturedAtMs
+                    lastDecision = "первая цель"
                 } else {
                     val shift = kotlin.math.hypot((fresh.origin.x - old.origin.x).toDouble(),
                         (fresh.origin.y - old.origin.y).toDouble())
@@ -113,6 +120,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                         pending = null
                         pendingCount = 0
                         smoothed++
+                        lastDecision = "цель удержана"
                     } else {
                         val candidate = pending?.guide
                         val match = candidate != null &&
@@ -122,16 +130,29 @@ internal class VisualLinesOverlay(private val context: Context) {
                                 (candidate.tip.y-fresh.tip.y).toDouble()) < fresh.ballRadius*.65
                         pendingCount = if (match) pendingCount+1 else 1
                         pending = value
-                        if (pendingCount >= 2) {
+                        // Switching to another ball requires sustained evidence; an aim rotation
+                        // around the same ball can be accepted more quickly.
+                        val targetSwitch = shift >= fresh.ballRadius*.65
+                        val required = if (targetSwitch) 5 else 3
+                        if (pendingCount >= required) {
                             result = value
                             capturedAt = capturedAtMs
                             pending = null
                             pendingCount = 0
-                        } else jumps++
+                            switches++
+                            lastDecision = if (targetSwitch) "новая цель подтверждена" else "поворот подтверждён"
+                        } else {
+                            jumps++
+                            held++
+                            lastDecision = "удержание: $pendingCount/$required · сдвиг ${shift.toInt()}px · угол ${Math.toDegrees(angle).toInt()}°"
+                        }
                     }
                 }
             } else if (result != null && now - capturedAt >= MAX_AGE_MS) {
                 result = null
+                pending = null
+                pendingCount = 0
+                lastDecision = "истёк срок"
             }
             if (result?.guide != null) {
                 val remaining = MAX_AGE_MS - (SystemClock.elapsedRealtime() - capturedAt)
@@ -143,6 +164,8 @@ internal class VisualLinesOverlay(private val context: Context) {
         fun clear() {
             removeCallbacks(expire)
             result = null
+            pending = null
+            pendingCount = 0
             drawStatus = "линия очищена"
             invalidate()
         }
@@ -197,7 +220,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 (guide.tip.x - guide.origin.x).toDouble()
             )).toInt()
             drawStatus = if (points.size >= 2)
-                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps"
+                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps · удержано $held · смен $switches · $lastDecision"
             else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height

@@ -176,7 +176,7 @@ class OpenCvGuideRecognizer {
             }.filter { it.third >= shortSide * .025 }
             Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
             Imgproc.GaussianBlur(gray, gray, Size(5.0, 5.0), 1.4)
-            val radius = shortSide * .020
+            val radius = shortSide * .030
             Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 1.0,
                 radius * 3.0, 110.0, 24.0,
                 max(4, (radius * .60).roundToInt()),
@@ -195,7 +195,7 @@ class OpenCvGuideRecognizer {
                 val c = circles.get(0, i)
                 if (c == null || c.size < 3) null else PixelPoint(c[0], c[1])
             }
-            val radiusPx = shortSide * .020
+            val radiusPx = shortSide * .030
             for (seg in segments.filter { it.third > shortSide * .20 }) {
                 longGuides++
                 for ((impact, cue) in listOf(seg.first to seg.second, seg.second to seg.first)) {

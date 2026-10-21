@@ -182,142 +182,59 @@ class OpenCvGuideRecognizer {
                 max(4, (radius * .60).roundToInt()),
                 max(6, (radius * 1.45).roundToInt()))
 
-            // Use the long incoming cue guide to locate the impact marker.
-            // The target ball is a filled, contrasting disk just beyond that marker.
-            // A marker alone, including one at a rail, is never sufficient.
-            data class Candidate(val target: PixelPoint, val direction: PixelPoint,
-                val score: Double, val marker: PixelPoint)
-            val candidates = mutableListOf<Candidate>()
-            var longGuides = 0
-            var coloredTargets = 0
-            var geometryPass = 0
-            val markers = (0 until circles.cols()).mapNotNull { i ->
-                val c = circles.get(0, i)
-                if (c == null || c.size < 3) null else PixelPoint(c[0], c[1])
-            }
+            // Branch-first: select the short outgoing guide, not a detected ball.
+            data class Branch(val origin: PixelPoint, val direction: PixelPoint,
+                val score: Double)
             val radiusPx = shortSide * .030
-            for (seg in segments.filter { it.third > shortSide * .20 }) {
-                longGuides++
-                for ((impact, cue) in listOf(seg.first to seg.second, seg.second to seg.first)) {
-                    // Incoming direction points from cue ball to contact marker.
-                    val ix = (impact.x - cue.x) / seg.third
-                    val iy = (impact.y - cue.y) / seg.third
-                    // A real ghost ring must be at the far end of the cue guide.
-                    val marker = markers.minByOrNull { hypot(it.x - impact.x, it.y - impact.y) }
-                        ?: continue
-                    if (hypot(marker.x - impact.x, marker.y - impact.y) > radiusPx * 1.7) continue
-                    // Scan the immediate collision neighborhood, not the whole table.
-                    // Balls can be offset laterally by almost one radius on a thin hit.
-                    for (forward in 1..5) {
-                        for (side in -3..3) {
-                            val along = radiusPx * (1.15 + forward * .30)
-                            val across = radiusPx * side * .30
-                            val target = PixelPoint(marker.x + ix * along - iy * across,
-                                marker.y + iy * along + ix * across)
-                            if (target.x < radiusPx * 2 || target.y < radiusPx * 2 ||
-                                target.x > raster.width - radiusPx * 2 ||
-                                target.y > raster.height - radiusPx * 2) continue
-                            // The scan samples positions *inside* the object ball,
-                            // not necessarily its exact centre. A strict circular-edge
-                            // score here rejects valid off-centre samples before the
-                            // centre-refinement stage can correct them.
-                            val fill = roundAnchorSupport(raster, target, radiusPx)
-                            if (fill < .35) continue
-                            val centerRgb = rgb(raster, target.x, target.y) ?: continue
-                            val colorRange = (centerRgb.maxOrNull() ?: 0) -
-                                (centerRgb.minOrNull() ?: 0)
-                            // Reject felt and monochrome ghost markers.
-                            val felt = rgb(raster, target.x + radiusPx * 2.5,
-                                target.y + radiusPx * 2.5) ?: continue
-                            val colorDiff = centerRgb.indices.sumOf {
-                                kotlin.math.abs(centerRgb[it] - felt[it])
-                            }
-                            if (colorRange < 65 && colorDiff < 115) continue
-                            coloredTargets++
-                            val dx = target.x - marker.x
-                            val dy = target.y - marker.y
-                            val dist = hypot(dx, dy)
-                            if (dist < radiusPx * 1.4 || dist > radiusPx * 2.8) continue
-                            if ((dx * ix + dy * iy) / dist < .20) continue
-                            geometryPass++
-                            // Geometric line of centers is the object ball's motion,
-                            // not the cue ball's post-collision deflection.
-                            val direction = PixelPoint(dx / dist, dy / dist)
-                            val score = fill + colorDiff.coerceAtMost(300) / 1000.0 -
-                                kotlin.math.abs(dist - radiusPx * 2) / (radiusPx * 8)
-                            candidates.add(Candidate(target, direction, score, marker))
+            val longSegments = segments.filter { it.third >= shortSide * .20 }
+            val shortSegments = segments.filter {
+                it.third >= radiusPx * 1.6 && it.third <= shortSide * .18
+            }
+            val candidates = mutableListOf<Branch>()
+            for (incoming in longSegments) {
+                for ((impact, cue) in listOf(incoming.first to incoming.second,
+                        incoming.second to incoming.first)) {
+                    val ix = (impact.x - cue.x) / incoming.third
+                    val iy = (impact.y - cue.y) / incoming.third
+                    for (outgoing in shortSegments) {
+                        for ((near, far) in listOf(outgoing.first to outgoing.second,
+                                outgoing.second to outgoing.first)) {
+                            val ux = (far.x - near.x) / outgoing.third
+                            val uy = (far.y - near.y) / outgoing.third
+                            val alignment = ix * ux + iy * uy
+                            if (alignment < .65) continue
+                            val dx = near.x - impact.x
+                            val dy = near.y - impact.y
+                            val forward = dx * ix + dy * iy
+                            val lateral = abs(dx * iy - dy * ix)
+                            if (forward !in radiusPx * 1.0..radiusPx * 5.0 ||
+                                lateral > radiusPx * 2.4) continue
+                            // Local contrast validates the collision neighbourhood
+                            // without recognizing individual balls.
+                            val mid = PixelPoint((impact.x + near.x) / 2,
+                                (impact.y + near.y) / 2)
+                            val sample = rgb(raster, mid.x, mid.y) ?: continue
+                            val felt = rgb(raster, mid.x, mid.y + radiusPx * 3)
+                                ?: continue
+                            val contrast = sample.indices.sumOf { abs(sample[it] - felt[it]) }
+                            if (contrast < 100) continue
+                            val score = alignment + min(contrast, 350) / 1000.0 -
+                                lateral / (radiusPx * 10)
+                            candidates.add(Branch(near, PixelPoint(ux, uy), score))
                         }
                     }
                 }
             }
             val best = candidates.maxByOrNull { it.score }
-                ?: return none("Нет прицельного шара · входящих=$longGuides · цветных=$coloredTargets · геометрия=$geometryPass · кругов=${markers.size}")
-            // Multiple nearby scan samples represent one target, but disjoint targets
-            // are ambiguous and must not yield an arbitrary prediction.
-            val conflicting = candidates.any {
-                hypot(it.target.x - best.target.x, it.target.y - best.target.y) > radiusPx * 2.0 &&
-                    it.score > best.score - .07
-            }
-            if (conflicting) return none("Несколько целей · кандидатов=${candidates.size}")
-            // Refine the center by maximizing the circular color boundary around
-            // the rough target. This avoids aiming from a random interior pixel.
-            var refined = best.target
-            var centerScore = Double.NEGATIVE_INFINITY
-            for (dy in -5..5) for (dx in -5..5) {
-                val p = PixelPoint(best.target.x + dx * radiusPx * .12,
-                    best.target.y + dy * radiusPx * .12)
-                val support = roundAnchorSupport(raster, p, radiusPx)
-                val displacement = hypot(p.x - best.target.x, p.y - best.target.y) / radiusPx
-                val score = support - displacement * .08
-                if (score > centerScore) { centerScore = score; refined = p }
-            }
-            val geomX = refined.x - best.marker.x
-            val geomY = refined.y - best.marker.y
-            val geomLength = hypot(geomX, geomY)
-            if (geomLength < 1.0) return none("Нулевая геометрия цели")
-            val gx = geomX / geomLength
-            val gy = geomY / geomLength
-            // Short guide is useful only if it starts at the actual target
-            // and points away from the impact marker, never along the cue path.
-            var bestBranch: PixelPoint? = null
-            var bestBranchError = Double.POSITIVE_INFINITY
-            for (seg in segments) {
-                if (seg.third < radiusPx * 1.0 || seg.third > shortSide * .18) continue
-                val da = hypot(seg.first.x - refined.x, seg.first.y - refined.y)
-                val db = hypot(seg.second.x - refined.x, seg.second.y - refined.y)
-                val near = if (da < db) seg.first else seg.second
-                val far = if (da < db) seg.second else seg.first
-                if (min(da, db) > radiusPx * 1.35) continue
-                // Reject a short Hough fragment of the incoming cue guide.
-                // An outgoing branch must begin on the target's far hemisphere,
-                // away from the impact marker, and visibly extend beyond the ball.
-                val fromMarkerX = near.x - best.marker.x
-                val fromMarkerY = near.y - best.marker.y
-                val markerToTarget = hypot(refined.x - best.marker.x,
-                    refined.y - best.marker.y)
-                if (markerToTarget < radiusPx * 1.4) continue
-                val farMarkerDistance = hypot(far.x - best.marker.x,
-                    far.y - best.marker.y)
-                val nearMarkerDistance = hypot(fromMarkerX, fromMarkerY)
-                if (farMarkerDistance <= nearMarkerDistance + radiusPx * .65) continue
-                if (hypot(far.x - refined.x, far.y - refined.y) < radiusPx * 1.5) continue
-                val vx = (far.x - near.x) / seg.third
-                val vy = (far.y - near.y) / seg.third
-                val cosine = vx * gx + vy * gy
-                if (cosine < kotlin.math.cos(12.0 * PI / 180.0)) continue
-                val error = kotlin.math.acos(cosine.coerceIn(-1.0, 1.0)) * 180.0 / PI
-                if (error < bestBranchError) {
-                    bestBranchError = error
-                    bestBranch = PixelPoint(vx, vy)
-                }
-            }
-            val chosen = if (bestBranch != null && bestBranchError <= 8.0)
-                bestBranch!! else return none("Нет надёжной ветви прицельного шара")
-            val geomAngle = Math.toDegrees(kotlin.math.atan2(gy, gx)).roundToInt()
-            val branchAngle = bestBranch?.let {
-                Math.toDegrees(kotlin.math.atan2(it.y, it.x)).roundToInt().toString() + "°"
-            } ?: "нет"
-            val delta = if (bestBranch != null) "${bestBranchError.roundToInt()}°" else "—"
+                ?: return none("Нет исходящей линии · длинных=${longSegments.size} · коротких=${shortSegments.size}")
+            if (candidates.any {
+                    it.score > best.score - .08 &&
+                    hypot(it.origin.x - best.origin.x, it.origin.y - best.origin.y) > radiusPx * 3
+                }) return none("Неоднозначная исходящая линия")
+            val refined = best.origin
+            val chosen = best.direction
+            val centerScore = best.score.coerceIn(0.0, 1.0)
+            val branchAngle = Math.toDegrees(kotlin.math.atan2(chosen.y, chosen.x)).roundToInt()
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(refined),
                 tip = raster.capturePoint(PixelPoint(
@@ -326,12 +243,10 @@ class OpenCvGuideRecognizer {
                 ballRadius = (radiusPx * raster.scaleX).toFloat(),
                 // Evidence score, not a calibrated probability. Avoid reporting a
                 // fixed 95% for every accepted frame regardless of guide alignment.
-                score = (best.score.coerceIn(0.0, 1.0) *
-                    (1.0 - bestBranchError / 12.0).coerceIn(0.0, 1.0) *
-                    centerScore.coerceIn(0.0, 1.0)).toFloat()
+                score = centerScore.toFloat()
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Цель · угол геом=$geomAngle° · ветвь=$branchAngle · Δ=$delta · уточнение=${(hypot(refined.x-best.target.x,refined.y-best.target.y)*raster.scaleX).roundToInt()}px · 3 отражения")
+                "Исходящая линия · угол=${branchAngle}° · 3 отражения")
         } finally {
             circles.release()
             gray.release()

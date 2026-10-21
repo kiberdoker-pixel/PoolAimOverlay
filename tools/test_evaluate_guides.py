@@ -27,5 +27,20 @@ class EvaluatorTests(unittest.TestCase):
         truth = [{"video":"v","timestamp_seconds":"1","expected":"none"}]
         self.assertEqual(evaluate(truth, [], 12, 8)[1], 0)
 
+    def test_empty_truth_fails(self):
+        with self.assertRaises(ValueError):
+            evaluate([], [], 12, 8)
+
+    def test_extra_unreviewed_prediction_fails(self):
+        truth = [{"video":"v","timestamp_seconds":"0","expected":"none"}]
+        pred = [{"video":"v","timestamp_seconds":"0","detected":"false"},
+                {"video":"v","timestamp_seconds":"1","detected":"false"}]
+        self.assertEqual(len(evaluate(truth, pred, 12, 8)[2]), 1)
+
+    def test_duplicate_truth_fails(self):
+        row = {"video":"v","timestamp_seconds":"0","expected":"none"}
+        with self.assertRaises(ValueError):
+            evaluate([row, row], [], 12, 8)
+
 if __name__ == "__main__":
     unittest.main()

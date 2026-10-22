@@ -158,7 +158,7 @@ class OpenCvGuideRecognizer {
             Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
             // Real 8 Ball Pool guides can be neutral gray rather than bright white.
             // Preserve the low-saturation gate so cyan overlay and colored cloth stay out.
-            Core.inRange(hsv, Scalar(0.0, 0.0, 110.0), Scalar(180.0, 55.0, 255.0), mask)
+            Core.inRange(hsv, Scalar(0.0, 0.0, 85.0), Scalar(180.0, 55.0, 255.0), mask)
             val shortSide = min(raster.width, raster.height).toDouble()
             Imgproc.HoughLinesP(mask, lines, 1.0, PI / 180.0,
                 max(10, (shortSide * .035).roundToInt()), shortSide * .04, 2.0)
@@ -186,7 +186,7 @@ class OpenCvGuideRecognizer {
             data class Branch(val origin: PixelPoint, val direction: PixelPoint,
                 val score: Double)
             val radiusPx = shortSide * .030
-            val longSegments = segments.filter { it.third >= shortSide * .20 }
+            val longSegments = segments.filter { it.third >= shortSide * .12 }
             val shortSegments = segments.filter {
                 it.third >= radiusPx * 1.6 && it.third <= shortSide * .18
             }

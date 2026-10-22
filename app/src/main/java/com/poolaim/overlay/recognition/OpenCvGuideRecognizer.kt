@@ -247,6 +247,21 @@ class OpenCvGuideRecognizer {
                                     targetSupport++
                             }
                             if (targetSupport < 2) continue
+                            // Sample perpendicular to the outgoing guide near
+                            // its origin. A real object ball has a coloured
+                            // interior on BOTH sides of the guide axis, while
+                            // a white branch plus a hollow marker does not.
+                            var crossSupport = 0
+                            for (side in listOf(-1.0, 1.0)) {
+                                val probe = rgb(raster,
+                                    near.x - uy * radiusPx * .65 * side,
+                                    near.y + ux * radiusPx * .65 * side) ?: continue
+                                val spread = (probe.maxOrNull() ?: 0) -
+                                    (probe.minOrNull() ?: 0)
+                                if (spread >= 65 && (probe.maxOrNull() ?: 0) >= 95)
+                                    crossSupport++
+                            }
+                            if (crossSupport < 2) continue
                             val score = alignment + min(contrast, 350) / 1000.0 -
                                 lateral / (radiusPx * 10) + colored * .015
                             candidates.add(Branch(near, PixelPoint(ux, uy), score))

@@ -190,6 +190,65 @@ class RecognizerNegativeInstrumentedTest {
     }
 
     @Test
+    fun fragmentedIncomingGuideWithAttachedOutgoingBranchShouldRemainForward() {
+        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(Color.rgb(16, 125, 162))
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.rgb(170, 170, 170)
+                strokeWidth = 2f
+            }
+            // A dotted native guide, unlike the uninterrupted synthetic fixture.
+            val startX = 110f
+            val startY = 270f
+            val endX = 315f
+            val endY = 175f
+            for (step in 0 until 16) {
+                val a = step / 16f
+                val b = (step + .72f) / 16f
+                canvas.drawLine(
+                    startX + (endX - startX) * a,
+                    startY + (endY - startY) * a,
+                    startX + (endX - startX) * b,
+                    startY + (endY - startY) * b,
+                    paint
+                )
+            }
+            paint.color = Color.WHITE
+            paint.style = Paint.Style.STROKE
+            canvas.drawCircle(315f, 175f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.YELLOW
+            canvas.drawCircle(336f, 164f, 10f, paint)
+            paint.color = Color.WHITE
+            canvas.drawLine(345f, 159f, 389f, 136f, paint)
+
+            val recognizer = OpenCvGuideRecognizer()
+            val method = recognizer.javaClass.methods.single {
+                it.name == "inspectBitmap" && it.parameterTypes.size == 2
+            }
+            val ctor = method.parameterTypes[1].declaredConstructors.first {
+                it.parameterTypes.size == 4 &&
+                    it.parameterTypes.all { type -> type == Float::class.javaPrimitiveType }
+            }
+            ctor.isAccessible = true
+            val bounds = ctor.newInstance(0.05f, 0.05f, 0.95f, 0.95f)
+            val result = method.invoke(recognizer, bitmap, bounds)
+            val reason = result.javaClass.getMethod("getReason").invoke(result).toString()
+            val guide = result.javaClass.getMethod("getGuide").invoke(result)
+            assertTrue("Fragmented guide should be detected: $reason", guide != null)
+            val origin = guide!!.javaClass.getMethod("getOrigin").invoke(guide)
+            val tip = guide.javaClass.getMethod("getTip").invoke(guide)
+            val ox = (origin.javaClass.getMethod("getX").invoke(origin) as Number).toFloat()
+            val tx = (tip.javaClass.getMethod("getX").invoke(tip) as Number).toFloat()
+            assertTrue("Fragmented guide must point forward", tx > ox)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
     fun blankTableMustNotGenerateTrajectory() {
         val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
         try {

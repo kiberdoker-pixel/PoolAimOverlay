@@ -247,27 +247,24 @@ class OpenCvGuideRecognizer {
                                     targetSupport++
                             }
                             if (targetSupport < 2) continue
-                            // Sample perpendicular to the outgoing guide near
-                            // its origin. A real object ball has a coloured
-                            // interior on BOTH sides of the guide axis, while
-                            // a white branch plus a hollow marker does not.
+                            // Look BEHIND the start of the outgoing guide:
+                            // its far endpoint lies at the edge of the target
+                            // ball, so sampling directly at that endpoint
+                            // misses the ball and rejects valid shots.
                             var crossSupport = 0
                             for (side in listOf(-1.0, 1.0)) {
-                                val probe = rgb(raster,
-                                    near.x - uy * radiusPx * .65 * side,
-                                    near.y + ux * radiusPx * .65 * side) ?: continue
-                                val spread = (probe.maxOrNull() ?: 0) -
-                                    (probe.minOrNull() ?: 0)
-                                // Compare with local felt, not an absolute
-                                // saturation threshold (blue felt is colourful).
+                                val px = near.x - ux * radiusPx * .95 -
+                                    uy * radiusPx * .35 * side
+                                val py = near.y - uy * radiusPx * .95 +
+                                    ux * radiusPx * .35 * side
+                                val probe = rgb(raster, px, py) ?: continue
                                 val background = rgb(raster,
-                                    near.x - uy * radiusPx * 3.0 * side,
-                                    near.y + ux * radiusPx * 3.0 * side) ?: continue
+                                    px - uy * radiusPx * 3.0 * side,
+                                    py + ux * radiusPx * 3.0 * side) ?: continue
                                 val difference = probe.indices.sumOf {
                                     abs(probe[it] - background[it])
                                 }
-                                if (spread >= 65 && difference >= 115)
-                                    crossSupport++
+                                if (difference >= 115) crossSupport++
                             }
                             if (crossSupport < 2) continue
                             val score = alignment + min(contrast, 350) / 1000.0 -

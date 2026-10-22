@@ -160,8 +160,8 @@ class OpenCvGuideRecognizer {
             // Preserve the low-saturation gate so cyan overlay and colored cloth stay out.
             Core.inRange(hsv, Scalar(0.0, 0.0, 85.0), Scalar(180.0, 55.0, 255.0), mask)
             val shortSide = min(raster.width, raster.height).toDouble()
-            Imgproc.HoughLinesP(mask, lines, 1.0, PI / 180.0,
-                max(10, (shortSide * .035).roundToInt()), shortSide * .04, 2.0)
+            // The game renders dotted aim guides. A 2px Hough gap split the incoming\n            // guide into dozens of short pieces (observed in gameplay recording).\n            Imgproc.HoughLinesP(mask, lines, 1.0, PI / 180.0,
+                max(10, (shortSide * .035).roundToInt()), shortSide * .04, max(3.0, shortSide * .025))
             if (lines.empty()) return none("Линия не найдена")
 
             // Build 98: a guide is valid only when attached to the game's hollow

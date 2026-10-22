@@ -258,7 +258,15 @@ class OpenCvGuideRecognizer {
                                     near.y + ux * radiusPx * .65 * side) ?: continue
                                 val spread = (probe.maxOrNull() ?: 0) -
                                     (probe.minOrNull() ?: 0)
-                                if (spread >= 65 && (probe.maxOrNull() ?: 0) >= 95)
+                                // Compare with local felt, not an absolute
+                                // saturation threshold (blue felt is colourful).
+                                val background = rgb(raster,
+                                    near.x - uy * radiusPx * 3.0 * side,
+                                    near.y + ux * radiusPx * 3.0 * side) ?: continue
+                                val difference = probe.indices.sumOf {
+                                    abs(probe[it] - background[it])
+                                }
+                                if (spread >= 65 && difference >= 115)
                                     crossSupport++
                             }
                             if (crossSupport < 2) continue

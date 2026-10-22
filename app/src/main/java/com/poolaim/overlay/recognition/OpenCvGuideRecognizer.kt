@@ -198,7 +198,17 @@ class OpenCvGuideRecognizer {
                         incoming.second to incoming.first)) {
                     val ix = (impact.x - cue.x) / incoming.third
                     val iy = (impact.y - cue.y) / incoming.third
+                    // Reject segments whose bounding boxes cannot reach the
+                    // collision neighbourhood. This is a conservative spatial
+                    // prefilter; the exact forward/lateral checks remain below.
+                    val reach = radiusPx * 8.0
                     for (outgoing in shortSegments) {
+                        val minX = min(outgoing.first.x, outgoing.second.x) - reach
+                        val maxX = max(outgoing.first.x, outgoing.second.x) + reach
+                        val minY = min(outgoing.first.y, outgoing.second.y) - reach
+                        val maxY = max(outgoing.first.y, outgoing.second.y) + reach
+                        if (impact.x !in minX..maxX || impact.y !in minY..maxY)
+                            continue
                         for ((near, far) in listOf(outgoing.first to outgoing.second,
                                 outgoing.second to outgoing.first)) {
                             val ux = (far.x - near.x) / outgoing.third

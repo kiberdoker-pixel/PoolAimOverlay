@@ -150,8 +150,6 @@ class OpenCvGuideRecognizer {
         val hsv = Mat()
         val mask = Mat()
         val lines = Mat()
-        val gray = Mat()
-        val circles = Mat()
         try {
             rgba.put(0, 0, raster.rgba)
             Imgproc.cvtColor(rgba, rgb, Imgproc.COLOR_RGBA2RGB)
@@ -176,13 +174,8 @@ class OpenCvGuideRecognizer {
                     Triple(a, b, hypot(b.x - a.x, b.y - a.y))
                 }
             }.filter { it.third >= shortSide * .025 }
-            Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
-            Imgproc.GaussianBlur(gray, gray, Size(5.0, 5.0), 1.4)
-            val radius = shortSide * .030
-            Imgproc.HoughCircles(gray, circles, Imgproc.HOUGH_GRADIENT, 1.0,
-                radius * 3.0, 110.0, 24.0,
-                max(4, (radius * .60).roundToInt()),
-                max(6, (radius * 1.45).roundToInt()))
+            // Branch-first recognition does not use ball circles. Avoid an
+            // expensive HoughCircles pass on every captured frame.
 
             // Branch-first: select the short outgoing guide, not a detected ball.
             data class Branch(val origin: PixelPoint, val direction: PixelPoint,
@@ -312,8 +305,6 @@ class OpenCvGuideRecognizer {
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
                 "Исходящая линия · угол=${branchAngle}° · 3 отражения")
         } finally {
-            circles.release()
-            gray.release()
             lines.release()
             mask.release()
             hsv.release()

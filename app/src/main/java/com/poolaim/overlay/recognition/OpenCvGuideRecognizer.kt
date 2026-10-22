@@ -191,6 +191,13 @@ class OpenCvGuideRecognizer {
                 it.third >= radiusPx * 1.6 && it.third <= shortSide * .18
             }
             val candidates = mutableListOf<Branch>()
+            // Track how many pairs survive each filter in actual gameplay.
+            var alignedPairs = 0
+            var positionedPairs = 0
+            var contrastPairs = 0
+            var coloredPairs = 0
+            var targetPairs = 0
+            var crossPairs = 0
             for (incoming in longSegments) {
                 for ((impact, cue) in listOf(incoming.first to incoming.second,
                         incoming.second to incoming.first)) {
@@ -203,12 +210,14 @@ class OpenCvGuideRecognizer {
                             val uy = (far.y - near.y) / outgoing.third
                             val alignment = ix * ux + iy * uy
                             if (alignment < .65) continue
+                            alignedPairs++
                             val dx = near.x - impact.x
                             val dy = near.y - impact.y
                             val forward = dx * ix + dy * iy
                             val lateral = abs(dx * iy - dy * ix)
                             if (forward !in radiusPx * 1.0..radiusPx * 5.0 ||
                                 lateral > radiusPx * 2.4) continue
+                            positionedPairs++
                             // Local contrast validates the collision neighbourhood
                             // without recognizing individual balls.
                             val mid = PixelPoint((impact.x + near.x) / 2,
@@ -218,6 +227,7 @@ class OpenCvGuideRecognizer {
                                 ?: continue
                             val contrast = sample.indices.sumOf { abs(sample[it] - felt[it]) }
                             if (contrast < 100) continue
+                            contrastPairs++
                             // A valid branch begins after a visible contact zone:
                             // verify colour evidence at several points, not just
                             // one potentially white pixel on the cue guide.
@@ -232,6 +242,7 @@ class OpenCvGuideRecognizer {
                                 if (spread >= 65 && bright) colored++
                             }
                             if (colored < 3) continue
+                            coloredPairs++
                             // A hollow white impact marker can provide a few
                             // coloured anti-aliased edge samples. Require a
                             // sustained coloured region near the outgoing
@@ -247,6 +258,7 @@ class OpenCvGuideRecognizer {
                                     targetSupport++
                             }
                             if (targetSupport < 2) continue
+                            targetPairs++
                             // Look BEHIND the start of the outgoing guide:
                             // its far endpoint lies at the edge of the target
                             // ball, so sampling directly at that endpoint
@@ -267,6 +279,7 @@ class OpenCvGuideRecognizer {
                                 if (difference >= 115) crossSupport++
                             }
                             if (crossSupport < 2) continue
+                            crossPairs++
                             val score = alignment + min(contrast, 350) / 1000.0 -
                                 lateral / (radiusPx * 10) + colored * .015
                             candidates.add(Branch(near, PixelPoint(ux, uy), score))
@@ -275,7 +288,7 @@ class OpenCvGuideRecognizer {
                 }
             }
             val best = candidates.maxByOrNull { it.score }
-                ?: return none("Нет исходящей линии · длинных=${longSegments.size} · коротких=${shortSegments.size}")
+                ?: return none("Нет исходящей · Д${longSegments.size} К${shortSegments.size} · А${alignedPairs} П${positionedPairs} К${contrastPairs} Ц${coloredPairs} Ш${targetPairs} Ф${crossPairs}")
             if (candidates.any {
                     it.score > best.score - .08 &&
                     hypot(it.origin.x - best.origin.x, it.origin.y - best.origin.y) > radiusPx * 3

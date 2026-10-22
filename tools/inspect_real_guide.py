@@ -5,7 +5,7 @@ This is a diagnostic, not a recognizer accuracy test: counts cannot prove
 that a candidate is the outgoing object-ball guide. Requires opencv-python.
 Example:
   python tools/inspect_real_guide.py capture.mp4 --times 8 15 22 30
-The ROI defaults are rough for the October 22 capture and can be overridden.
+The ROI defaults are rough for the October 22 capture (not the user-selected ROI) and can be overridden.
 """
 import argparse
 import cv2
@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("video")
     parser.add_argument("--times", type=float, nargs="+", default=[8, 15, 22, 30, 40, 50])
-    parser.add_argument("--roi", type=float, nargs=4, default=[.17, .19, .82, .92],
+    parser.add_argument("--roi", type=float, nargs=4, default=[.18, .18, .90, .95],
                         metavar=("LEFT", "TOP", "RIGHT", "BOTTOM"))
     args = parser.parse_args()
     left, top, right, bottom = args.roi

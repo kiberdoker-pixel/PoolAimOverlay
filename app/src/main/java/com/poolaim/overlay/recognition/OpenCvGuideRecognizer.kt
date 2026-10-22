@@ -218,8 +218,22 @@ class OpenCvGuideRecognizer {
                                 ?: continue
                             val contrast = sample.indices.sumOf { abs(sample[it] - felt[it]) }
                             if (contrast < 100) continue
+                            // A valid branch begins after a visible contact zone:
+                            // verify colour evidence at several points, not just
+                            // one potentially white pixel on the cue guide.
+                            var colored = 0
+                            for (step in 1..7) {
+                                val t = step / 8.0
+                                val probe = rgb(raster, impact.x + dx * t,
+                                    impact.y + dy * t) ?: continue
+                                val spread = (probe.maxOrNull() ?: 0) -
+                                    (probe.minOrNull() ?: 0)
+                                val bright = (probe.maxOrNull() ?: 0) >= 95
+                                if (spread >= 65 && bright) colored++
+                            }
+                            if (colored < 3) continue
                             val score = alignment + min(contrast, 350) / 1000.0 -
-                                lateral / (radiusPx * 10)
+                                lateral / (radiusPx * 10) + colored * .015
                             candidates.add(Branch(near, PixelPoint(ux, uy), score))
                         }
                     }

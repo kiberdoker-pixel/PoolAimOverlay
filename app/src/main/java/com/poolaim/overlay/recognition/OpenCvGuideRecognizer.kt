@@ -232,6 +232,21 @@ class OpenCvGuideRecognizer {
                                 if (spread >= 65 && bright) colored++
                             }
                             if (colored < 3) continue
+                            // A hollow white impact marker can provide a few
+                            // coloured anti-aliased edge samples. Require a
+                            // sustained coloured region near the outgoing
+                            // branch, where the object ball should be.
+                            var targetSupport = 0
+                            for (step in 4..7) {
+                                val t = step / 8.0
+                                val probe = rgb(raster, impact.x + dx * t,
+                                    impact.y + dy * t) ?: continue
+                                val spread = (probe.maxOrNull() ?: 0) -
+                                    (probe.minOrNull() ?: 0)
+                                if (spread >= 65 && (probe.maxOrNull() ?: 0) >= 95)
+                                    targetSupport++
+                            }
+                            if (targetSupport < 2) continue
                             val score = alignment + min(contrast, 350) / 1000.0 -
                                 lateral / (radiusPx * 10) + colored * .015
                             candidates.add(Branch(near, PixelPoint(ux, uy), score))

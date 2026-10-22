@@ -8,6 +8,7 @@ Example:
 The ROI defaults are rough for the October 22 capture (not the user-selected ROI) and can be overridden.
 """
 import argparse
+from pathlib import Path
 import cv2
 import numpy as np
 
@@ -18,7 +19,10 @@ def main():
     parser.add_argument("--times", type=float, nargs="+", default=[8, 15, 22, 30, 40, 50])
     parser.add_argument("--roi", type=float, nargs=4, default=[.18, .18, .90, .95],
                         metavar=("LEFT", "TOP", "RIGHT", "BOTTOM"))
+    parser.add_argument("--output-dir", type=Path, help="Save per-frame masks and Hough segments for visual inspection")
     args = parser.parse_args()
+    if args.output_dir:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
     left, top, right, bottom = args.roi
     if not (0 <= left < right <= 1 and 0 <= top < bottom <= 1):
         parser.error("ROI must be normalized and nonempty")
@@ -44,6 +48,17 @@ def main():
                 lines = cv2.HoughLinesP(mask, 1, np.pi/180,
                     max(10, round(side*.035)), minLineLength=side*.04,
                     maxLineGap=gap)
+                if args.output_dir:
+                    preview = crop.copy()
+                    if lines is not None:
+                        for line in lines[:, 0, :]:
+                            x1, y1, x2, y2 = map(int, line)
+                            length = np.hypot(x2-x1, y2-y1)
+                            color = (0, 0, 255) if length >= side*.12 else (0, 255, 255)
+                            cv2.line(preview, (x1, y1), (x2, y2), color, 1)
+                    tag = f"t{second:g}_v{floor}_gap{gap:.1f}".replace(".", "p")
+                    cv2.imwrite(str(args.output_dir / f"{tag}_segments.png"), preview)
+                    cv2.imwrite(str(args.output_dir / f"{tag}_mask.png"), mask)
                 lengths = [] if lines is None else [
                     np.hypot(x[2]-x[0], x[3]-x[1]) for x in lines[:, 0, :]
                 ]

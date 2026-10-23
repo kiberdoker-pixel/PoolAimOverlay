@@ -319,6 +319,18 @@ class OpenCvGuideRecognizer {
                     it.score > best.score - .08 &&
                     hypot(it.origin.x - best.origin.x, it.origin.y - best.origin.y) > radiusPx * 3
                 }) return none("Неоднозначная исходящая линия")
+            // Two incoming guides can lead to the same outgoing target guide.
+            // Their cue-ball residual trajectories would disagree, so do not
+            // pick an arbitrary cyan ray just because the yellow ray matches.
+            val ambiguousIncoming = candidates.any { alternative ->
+                alternative !== best &&
+                    alternative.score > best.score - .08 &&
+                    hypot(alternative.origin.x - best.origin.x,
+                        alternative.origin.y - best.origin.y) <= radiusPx * 3 &&
+                    (alternative.incoming.x * best.incoming.x +
+                        alternative.incoming.y * best.incoming.y) <
+                        kotlin.math.cos(Math.toRadians(12.0))
+            }
             val refined = best.origin
             val chosen = best.direction
             val centerScore = best.score.coerceIn(0.0, 1.0)
@@ -330,7 +342,7 @@ class OpenCvGuideRecognizer {
                 TargetBallTrajectory.Point(best.incoming.x.toFloat(), best.incoming.y.toFloat()),
                 TargetBallTrajectory.Point(chosen.x.toFloat(), chosen.y.toFloat())
             )
-            if (cueDirection != null) {
+            if (cueDirection != null && !ambiguousIncoming) {
                 // Use the observed incoming guide endpoint at the collision
                 // neighbourhood. A fixed offset behind the target guide can
                 // move the cyan origin by several ball radii on angled hits.

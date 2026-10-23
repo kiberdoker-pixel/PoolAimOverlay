@@ -233,35 +233,31 @@ class OpenCvGuideRecognizer {
                             val contrast = sample.indices.sumOf { abs(sample[it] - felt[it]) }
                             if (contrast < 100) continue
                             contrastPairs++
-                            // A valid branch begins after a visible contact zone:
-                            // verify colour evidence at several points, not just
-                            // one potentially white pixel on the cue guide.
+                            // In actual gameplay the contact marker and the target
+                            // ball are separated by felt. Requiring 3/7 coloured
+                            // pixels *along that gap* rejects valid branches.
+                            // Instead require compact colour evidence around the
+                            // start of the outgoing guide. This is local pixel
+                            // evidence, not global ball detection.
                             var colored = 0
-                            for (step in 1..7) {
-                                val t = step / 8.0
-                                val probe = rgb(raster, impact.x + dx * t,
-                                    impact.y + dy * t) ?: continue
-                                val spread = (probe.maxOrNull() ?: 0) -
-                                    (probe.minOrNull() ?: 0)
-                                val bright = (probe.maxOrNull() ?: 0) >= 95
-                                if (spread >= 65 && bright) colored++
+                            var targetSupport = 0
+                            for (back in listOf(.25, .55, .85, 1.15)) {
+                                for (side in listOf(-.65, -.30, 0.0, .30, .65)) {
+                                    val px = near.x - ux * radiusPx * back -
+                                        uy * radiusPx * side
+                                    val py = near.y - uy * radiusPx * back +
+                                        ux * radiusPx * side
+                                    val probe = rgb(raster, px, py) ?: continue
+                                    val spread = (probe.maxOrNull() ?: 0) -
+                                        (probe.minOrNull() ?: 0)
+                                    if (spread >= 65 && (probe.maxOrNull() ?: 0) >= 95) {
+                                        colored++
+                                        if (back >= .55) targetSupport++
+                                    }
+                                }
                             }
                             if (colored < 3) continue
                             coloredPairs++
-                            // A hollow white impact marker can provide a few
-                            // coloured anti-aliased edge samples. Require a
-                            // sustained coloured region near the outgoing
-                            // branch, where the object ball should be.
-                            var targetSupport = 0
-                            for (step in 4..7) {
-                                val t = step / 8.0
-                                val probe = rgb(raster, impact.x + dx * t,
-                                    impact.y + dy * t) ?: continue
-                                val spread = (probe.maxOrNull() ?: 0) -
-                                    (probe.minOrNull() ?: 0)
-                                if (spread >= 65 && (probe.maxOrNull() ?: 0) >= 95)
-                                    targetSupport++
-                            }
                             if (targetSupport < 2) continue
                             targetPairs++
                             // Look BEHIND the start of the outgoing guide:

@@ -342,13 +342,21 @@ class OpenCvGuideRecognizer {
                 TargetBallTrajectory.Point(best.incoming.x.toFloat(), best.incoming.y.toFloat()),
                 TargetBallTrajectory.Point(chosen.x.toFloat(), chosen.y.toFloat())
             )
+            // A nearly head-on impact has no stable tangent prediction.
+            // A competing incoming guide also makes the cyan prediction
+            // ambiguous even if the yellow object guide is unambiguous.
             if (cueDirection != null && !ambiguousIncoming) {
                 // Use the observed incoming guide endpoint at the collision
                 // neighbourhood. A fixed offset behind the target guide can
                 // move the cyan origin by several ball radii on angled hits.
                 // This is still an estimate, not a detected cue-ball centre.
                 val contact = best.impact
-                if (contact.x in 0.0..raster.width.toDouble() &&
+                // A Hough segment endpoint is not always the collision point:
+                // require it to be in the same local region as the outgoing
+                // guide before allowing the cyan trajectory.
+                val impactDistance = hypot(contact.x - refined.x, contact.y - refined.y)
+                if (impactDistance <= radiusPx * 4 &&
+                    contact.x in 0.0..raster.width.toDouble() &&
                     contact.y in 0.0..raster.height.toDouble()) {
                     val start = raster.capturePoint(contact)
                     val end = raster.capturePoint(PixelPoint(

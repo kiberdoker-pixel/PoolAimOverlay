@@ -219,7 +219,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             super.onDraw(canvas)
             val r = result ?: run { drawStatus = "нет подтверждённой линии"; return }
             val guide = r.guide ?: run { drawStatus = "нет координат линии"; return }
-            if (r.width <= 0 || r.height <= 0 || guide.score < .90f) {
+            if (r.width <= 0 || r.height <= 0 || !guide.score.isFinite()) {
                 drawStatus = "неверный кадр или оценка"; return
             }
             if (SystemClock.elapsedRealtime() - capturedAt !in 0 until MAX_AGE_MS ||
@@ -252,7 +252,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 maxBounces = 3
             )
             val uncertain = true
-            paint.color = if (uncertain) Color.rgb(255, 174, 48) else Color.CYAN
+            paint.color = Color.YELLOW
             paint.pathEffect = if (uncertain) android.graphics.DashPathEffect(
                 floatArrayOf(14f * resources.displayMetrics.density, 9f * resources.displayMetrics.density), 0f
             ) else null

@@ -355,7 +355,11 @@ class OpenCvGuideRecognizer {
                 // require it to be in the same local region as the outgoing
                 // guide before allowing the cyan trajectory.
                 val impactDistance = hypot(contact.x - refined.x, contact.y - refined.y)
-                if (impactDistance <= radiusPx * 4 &&
+                // An endpoint very far from the object guide is unreliable,
+                // but a zero-length separation is also suspicious: the two
+                // detected segments may be the same Hough line.
+                if (impactDistance >= radiusPx * 0.15 &&
+                    impactDistance <= radiusPx * 4 &&
                     contact.x in 0.0..raster.width.toDouble() &&
                     contact.y in 0.0..raster.height.toDouble()) {
                     val start = raster.capturePoint(contact)

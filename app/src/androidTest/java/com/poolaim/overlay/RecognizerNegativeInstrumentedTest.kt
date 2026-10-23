@@ -249,6 +249,49 @@ class RecognizerNegativeInstrumentedTest {
     }
 
     @Test
+    fun guidesOutsideUserSelectedRoiMustNotGenerateTrajectory() {
+        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(Color.rgb(16, 125, 162))
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                strokeWidth = 2f
+            }
+            // Complete aiming evidence on the left side of the capture.
+            canvas.drawLine(15f, 260f, 155f, 175f, paint)
+            paint.style = Paint.Style.STROKE
+            canvas.drawCircle(155f, 175f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            paint.color = Color.YELLOW
+            canvas.drawCircle(177f, 164f, 10f, paint)
+            paint.color = Color.WHITE
+            canvas.drawLine(186f, 159f, 230f, 136f, paint)
+
+            // The user's ROI starts at x=320. The detector must not read
+            // any of the evidence on the left, even if it is a valid guide.
+            val recognizer = OpenCvGuideRecognizer()
+            val method = recognizer.javaClass.methods.single {
+                it.name == "inspectBitmap" && it.parameterTypes.size == 2
+            }
+            val ctor = method.parameterTypes[1].declaredConstructors.first {
+                it.parameterTypes.size == 4 &&
+                    it.parameterTypes.all { type -> type == Float::class.javaPrimitiveType }
+            }
+            ctor.isAccessible = true
+            val bounds = ctor.newInstance(0.50f, 0.05f, 0.95f, 0.95f)
+            val result = method.invoke(recognizer, bitmap, bounds)
+            val reason = result.javaClass.getMethod("getReason").invoke(result).toString()
+            val guide = result.javaClass.getMethod("getGuide").invoke(result)
+            assertNull("Guide outside ROI must be ignored: $reason", guide)
+            assertTrue("OpenCV unavailable: $reason",
+                !reason.contains("OpenCV", ignoreCase = true))
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
     fun blankTableMustNotGenerateTrajectory() {
         val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
         try {

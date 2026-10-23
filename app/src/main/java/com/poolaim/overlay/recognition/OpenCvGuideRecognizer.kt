@@ -187,7 +187,7 @@ class OpenCvGuideRecognizer {
 
             // Branch-first: select the short outgoing guide, not a detected ball.
             data class Branch(val origin: PixelPoint, val direction: PixelPoint,
-                val incoming: PixelPoint, val score: Double)
+                val incoming: PixelPoint, val impact: PixelPoint, val score: Double)
             val radiusPx = shortSide * .030
             val longSegments = segments.filter { it.third >= shortSide * .12 }
             val shortSegments = segments.filter {
@@ -308,7 +308,7 @@ class OpenCvGuideRecognizer {
                             crossPairs++
                             val score = alignment + min(contrast, 350) / 1000.0 -
                                 lateral / (radiusPx * 10) + colored * .015
-                            candidates.add(Branch(near, PixelPoint(ux, uy), PixelPoint(ix, iy), score))
+                            candidates.add(Branch(near, PixelPoint(ux, uy), PixelPoint(ix, iy), impact, score))
                         }
                     }
                 }
@@ -331,10 +331,11 @@ class OpenCvGuideRecognizer {
                 TargetBallTrajectory.Point(chosen.x.toFloat(), chosen.y.toFloat())
             )
             if (cueDirection != null) {
-                // The impact position is an estimate, not a recognized cue-ball
-                // center. Only emit a cue ray when its start is inside the ROI.
-                val contact = PixelPoint(refined.x - chosen.x * radiusPx * 2,
-                    refined.y - chosen.y * radiusPx * 2)
+                // Use the observed incoming guide endpoint at the collision
+                // neighbourhood. A fixed offset behind the target guide can
+                // move the cyan origin by several ball radii on angled hits.
+                // This is still an estimate, not a detected cue-ball centre.
+                val contact = best.impact
                 if (contact.x in 0.0..raster.width.toDouble() &&
                     contact.y in 0.0..raster.height.toDouble()) {
                     val start = raster.capturePoint(contact)

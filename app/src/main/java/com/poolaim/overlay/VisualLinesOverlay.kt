@@ -217,6 +217,9 @@ internal class VisualLinesOverlay(private val context: Context) {
             frame: FrameGuideResult
         ) {
             val b = frame.bounds
+            // The CV ray is from the current captured frame. The yellow path
+            // may have been smoothed or held from an older frame; match both
+            // direction and position before showing a paired prediction.
             cueTrajectory = if (origin != null && direction != null &&
                 !TableBoundsOverlay.editing && b.isValid() &&
                 frame.width > 0 && frame.height > 0 &&
@@ -240,9 +243,18 @@ internal class VisualLinesOverlay(private val context: Context) {
                         val oy = observed.tip.y - observed.origin.y
                         val lengths = kotlin.math.hypot(dx.toDouble(), dy.toDouble()) *
                             kotlin.math.hypot(ox.toDouble(), oy.toDouble())
-                        distance <= observed.ballRadius * .35f &&
-                            lengths > 0.001 &&
-                            (dx * ox + dy * oy) / lengths >= kotlin.math.cos(Math.toRadians(5.0))
+                        val originMatches = distance <= observed.ballRadius * .35f
+                        val angleMatches = lengths > 0.001 &&
+                            (dx.toDouble() * ox + dy.toDouble() * oy) / lengths >=
+                            kotlin.math.cos(Math.toRadians(5.0))
+                        // A shifted cue impact can indicate a different incoming
+                        // segment, even if the outgoing yellow guide is similar.
+                        // Keep the cyan start close to the same collision region.
+                        val cueDistance = kotlin.math.hypot(
+                            (origin.x - observed.origin.x).toDouble(),
+                            (origin.y - observed.origin.y).toDouble())
+                        originMatches && angleMatches &&
+                            cueDistance <= observed.ballRadius * 5.0f
                     } ?: false
                 } == true &&
                 SystemClock.elapsedRealtime() - capturedAt in 0 until MAX_AGE_MS &&

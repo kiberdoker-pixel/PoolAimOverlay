@@ -75,6 +75,7 @@ internal class VisualLinesOverlay(private val context: Context) {
         // Independent cue-ball trajectory input. Do not infer it from the object
         // ball's guide: two differently coloured copies would be misleading.
         private var cueTrajectory: List<TargetBallTrajectory.Point> = emptyList()
+        private var cueStatus = "нет отдельного направления битка"
 
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.CYAN
@@ -102,6 +103,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             // Cue predictions must never survive a new frame without their own
             // fresh observation, even when an object-ball guide is still valid.
             cueTrajectory = emptyList()
+            cueStatus = "ожидание нового кадра"
             removeCallbacks(expire)
             val now = SystemClock.elapsedRealtime()
             val age = now - capturedAtMs
@@ -270,6 +272,11 @@ internal class VisualLinesOverlay(private val context: Context) {
                     maxBounces = 3
                 )
             } else emptyList()
+            cueStatus = if (cueTrajectory.size >= 2)
+                "голубая: ${cueTrajectory.size - 1} отрезка"
+            else if (origin == null || direction == null)
+                "голубая: распознаватель не нашёл направление"
+            else "голубая: кадр или геометрия не подтверждены"
             invalidate()
         }
 
@@ -277,6 +284,7 @@ internal class VisualLinesOverlay(private val context: Context) {
             removeCallbacks(expire)
             result = null
             cueTrajectory = emptyList()
+            cueStatus = "очищена"
             pending = null
             pendingCount = 0
             lastSeenAt = 0L
@@ -335,7 +343,7 @@ internal class VisualLinesOverlay(private val context: Context) {
                 (guide.tip.x - guide.origin.x).toDouble()
             )).toInt()
             drawStatus = if (points.size >= 2)
-                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps · удержано $held · смен $switches · разворотов $rejectedReversals · возраст ${SystemClock.elapsedRealtime()-capturedAt}мс · $lastDecision"
+                "${if (uncertain) "НЕ УВЕРЕН" else "уверен"} · ${points.size - 1} отрезка · старт ${startX.toInt()},${startY.toInt()} · угол ${angle}° · сглажено $smoothed · скачков $jumps · удержано $held · смен $switches · разворотов $rejectedReversals · возраст ${SystemClock.elapsedRealtime()-capturedAt}мс · $lastDecision · $cueStatus"
             else "математика: нет отрезков"
             val sx = width.toFloat() / r.width
             val sy = height.toFloat() / r.height

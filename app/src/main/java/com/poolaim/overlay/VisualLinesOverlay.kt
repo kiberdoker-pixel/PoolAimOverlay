@@ -137,24 +137,6 @@ internal class VisualLinesOverlay(private val context: Context) {
                     pending = null
                     pendingCount = 0
                     lastDecision = "цель подтверждена распознавателем"
-                } else if (false) {
-                    val candidate = pending?.guide
-                    val match = candidate != null &&
-                        kotlin.math.hypot((candidate.origin.x-fresh.origin.x).toDouble(),
-                            (candidate.origin.y-fresh.origin.y).toDouble()) < fresh.ballRadius*.35 &&
-                        kotlin.math.hypot((candidate.tip.x-fresh.tip.x).toDouble(),
-                            (candidate.tip.y-fresh.tip.y).toDouble()) < fresh.ballRadius*.65
-                    pendingCount = if (match) pendingCount + 1 else 1
-                    pending = value
-                    if (pendingCount >= 3) {
-                        result = value
-                        capturedAt = capturedAtMs
-                        pending = null
-                        pendingCount = 0
-                        lastDecision = "цель подтверждена 3/3"
-                    } else {
-                        lastDecision = "ожидание точной цели $pendingCount/3"
-                    }
                 } else {
                     val shift = kotlin.math.hypot((fresh.origin.x - old.origin.x).toDouble(),
                         (fresh.origin.y - old.origin.y).toDouble())

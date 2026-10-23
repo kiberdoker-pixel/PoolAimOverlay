@@ -341,7 +341,16 @@ class OpenCvGuideRecognizer {
                     val end = raster.capturePoint(PixelPoint(
                         contact.x + cueDirection.x * radiusPx * 5,
                         contact.y + cueDirection.y * radiusPx * 5))
-                    lastCueRay = CueRay(start, GuidePoint(end.x - start.x, end.y - start.y))
+                    val left = bounds.left * captureWidth
+                    val top = bounds.top * captureHeight
+                    val right = bounds.right * captureWidth
+                    val bottom = bounds.bottom * captureHeight
+                    // The sampled ROI can be rounded outward by up to a pixel.
+                    // Validate the *actual* capture-space start before drawing.
+                    if (start.x in left..right && start.y in top..bottom) {
+                        lastCueRay = CueRay(start,
+                            GuidePoint(end.x - start.x, end.y - start.y))
+                    }
                 }
             }
             val guide = RecognizedGuide(

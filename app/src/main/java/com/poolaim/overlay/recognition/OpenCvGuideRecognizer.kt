@@ -332,6 +332,11 @@ class OpenCvGuideRecognizer {
                     // impact neighbourhoods before declaring ambiguity.
                     hypot(alternative.impact.x - best.impact.x,
                         alternative.impact.y - best.impact.y) <= radiusPx * 1.5 &&
+                    // Only compare candidates that point the object ball
+                    // along essentially the same outgoing guide.
+                    (alternative.direction.x * best.direction.x +
+                        alternative.direction.y * best.direction.y) >=
+                        kotlin.math.cos(Math.toRadians(5.0)) &&
                     (alternative.incoming.x * best.incoming.x +
                         alternative.incoming.y * best.incoming.y) <
                         kotlin.math.cos(Math.toRadians(12.0))

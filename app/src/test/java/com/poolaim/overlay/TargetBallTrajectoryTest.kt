@@ -9,6 +9,21 @@ class TargetBallTrajectoryTest {
         direction: TargetBallTrajectory.Point = p(1f, 0f), bounces: Int = 3) =
         TargetBallTrajectory.calculate(start, direction, 0f, 0f, 100f, 50f, bounces)
 
+    @Test fun cueDirectionIsIndependentFromObjectBallDirection() {
+        val cue = TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(1f, 1f))
+        assertNotNull(cue)
+        assertEquals(0.7071f, cue!!.x, .001f)
+        assertEquals(-0.7071f, cue.y, .001f)
+        assertTrue(cue.y < 0f)
+    }
+
+    @Test fun headOnOrOpposingImpactHasNoReliableCueRay() {
+        assertNull(TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(1f, 0f)))
+        assertNull(TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(-1f, 0f)))
+        assertNull(TargetBallTrajectory.cueAfterImpact(p(0f, 0f), p(1f, 0f)))
+        assertNull(TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(Float.NaN, 0f)))
+    }
+
     @Test fun threeReflectionsHaveFourLegsAndFivePoints() {
         assertEquals(listOf(p(25f, 25f), p(100f, 25f), p(0f, 25f), p(100f, 25f), p(0f, 25f)), trace())
     }

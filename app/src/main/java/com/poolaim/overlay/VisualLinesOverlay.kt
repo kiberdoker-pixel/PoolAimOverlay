@@ -99,6 +99,9 @@ internal class VisualLinesOverlay(private val context: Context) {
         private val expire = Runnable { clear() }
 
         fun update(value: FrameGuideResult, capturedAtMs: Long) {
+            // Cue predictions must never survive a new frame without their own
+            // fresh observation, even when an object-ball guide is still valid.
+            cueTrajectory = emptyList()
             removeCallbacks(expire)
             val now = SystemClock.elapsedRealtime()
             val age = now - capturedAtMs

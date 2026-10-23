@@ -327,6 +327,11 @@ class OpenCvGuideRecognizer {
                     alternative.score > best.score - .08 &&
                     hypot(alternative.origin.x - best.origin.x,
                         alternative.origin.y - best.origin.y) <= radiusPx * 3 &&
+                    // A nearby but distinct incoming endpoint may represent
+                    // another ball or an unrelated Hough segment. Compare
+                    // impact neighbourhoods before declaring ambiguity.
+                    hypot(alternative.impact.x - best.impact.x,
+                        alternative.impact.y - best.impact.y) <= radiusPx * 1.5 &&
                     (alternative.incoming.x * best.incoming.x +
                         alternative.incoming.y * best.incoming.y) <
                         kotlin.math.cos(Math.toRadians(12.0))

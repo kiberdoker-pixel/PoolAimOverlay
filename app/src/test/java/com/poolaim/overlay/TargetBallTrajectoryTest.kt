@@ -24,6 +24,29 @@ class TargetBallTrajectoryTest {
         assertNull(TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(Float.NaN, 0f)))
     }
 
+    @Test fun independentCueAndObjectPathsStayInsideRoi() {
+        val incoming = p(1f, 0f)
+        val outgoing = p(1f, 1f)
+        val cue = TargetBallTrajectory.cueAfterImpact(incoming, outgoing)
+        assertNotNull(cue)
+        val cuePath = TargetBallTrajectory.calculate(
+            p(50f, 25f), cue!!, 0f, 0f, 100f, 50f, 3)
+        val objectPath = TargetBallTrajectory.calculate(
+            p(50f, 25f), outgoing, 0f, 0f, 100f, 50f, 3)
+        assertEquals(5, cuePath.size)
+        assertEquals(5, objectPath.size)
+        assertNotEquals(cuePath[1], objectPath[1])
+        (cuePath + objectPath).forEach { point ->
+            assertTrue(point.x in 0f..100f)
+            assertTrue(point.y in 0f..50f)
+        }
+    }
+
+    @Test fun nearlyStraightCollisionSuppressesUnstableCueDirection() {
+        assertNull(TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(1f, .01f)))
+        assertNotNull(TargetBallTrajectory.cueAfterImpact(p(1f, 0f), p(1f, .2f)))
+    }
+
     @Test fun threeReflectionsHaveFourLegsAndFivePoints() {
         assertEquals(listOf(p(25f, 25f), p(100f, 25f), p(0f, 25f), p(100f, 25f), p(0f, 25f)), trace())
     }

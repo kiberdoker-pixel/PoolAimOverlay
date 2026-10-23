@@ -269,19 +269,36 @@ class OpenCvGuideRecognizer {
                             // ball, so sampling directly at that endpoint
                             // misses the ball and rejects valid shots.
                             var crossSupport = 0
+                            // The target-ball colour can be offset from the
+                            // Hough endpoint by anti-aliasing or a dashed guide.
+                            // Search a *small* patch behind the outgoing line,
+                            // rather than requiring two exact pixels to land
+                            // on opposite sides of the ball at once.
                             for (side in listOf(-1.0, 1.0)) {
-                                val px = near.x - ux * radiusPx * .95 -
-                                    uy * radiusPx * .35 * side
-                                val py = near.y - uy * radiusPx * .95 +
-                                    ux * radiusPx * .35 * side
-                                val probe = rgb(raster, px, py) ?: continue
-                                val background = rgb(raster,
-                                    px - uy * radiusPx * 3.0 * side,
-                                    py + ux * radiusPx * 3.0 * side) ?: continue
-                                val difference = probe.indices.sumOf {
-                                    abs(probe[it] - background[it])
+                                var sideSupported = false
+                                for (back in listOf(.65, .95, 1.25)) {
+                                    for (across in listOf(.20, .40, .60)) {
+                                        val px = near.x - ux * radiusPx * back -
+                                            uy * radiusPx * across * side
+                                        val py = near.y - uy * radiusPx * back +
+                                            ux * radiusPx * across * side
+                                        val probe = rgb(raster, px, py) ?: continue
+                                        val background = rgb(raster,
+                                            px - uy * radiusPx * 3.0 * side,
+                                            py + ux * radiusPx * 3.0 * side) ?: continue
+                                        val difference = probe.indices.sumOf {
+                                            abs(probe[it] - background[it])
+                                        }
+                                        val spread = (probe.maxOrNull() ?: 0) -
+                                            (probe.minOrNull() ?: 0)
+                                        if (difference >= 115 && spread >= 65) {
+                                            sideSupported = true
+                                            break
+                                        }
+                                    }
+                                    if (sideSupported) break
                                 }
-                                if (difference >= 115) crossSupport++
+                                if (sideSupported) crossSupport++
                             }
                             if (crossSupport < 2) continue
                             crossPairs++

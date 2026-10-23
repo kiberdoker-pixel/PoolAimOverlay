@@ -2,6 +2,7 @@ package com.poolaim.overlay.recognition
 
 import android.graphics.Bitmap
 import android.media.Image
+import com.poolaim.overlay.TargetBallTrajectory
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -325,20 +326,19 @@ class OpenCvGuideRecognizer {
             // The incoming Hough segment and outgoing object guide are distinct
             // observations. Approximate the cue ball's residual tangent after
             // transferring the normal component to the object ball.
-            val incoming = best.incoming
-            val dot = incoming.x * chosen.x + incoming.y * chosen.y
-            val residualX = incoming.x - dot * chosen.x
-            val residualY = incoming.y - dot * chosen.y
-            val residualLength = hypot(residualX, residualY)
-            if (dot > 0.0 && residualLength >= .05) {
+            val cueDirection = TargetBallTrajectory.cueAfterImpact(
+                TargetBallTrajectory.Point(best.incoming.x.toFloat(), best.incoming.y.toFloat()),
+                TargetBallTrajectory.Point(chosen.x.toFloat(), chosen.y.toFloat())
+            )
+            if (cueDirection != null) {
                 // The contact region is estimated from the same branch. Avoid
                 // extrapolating from a cue ball that has not been recognized.
                 val contact = PixelPoint(refined.x - chosen.x * radiusPx * 2,
                     refined.y - chosen.y * radiusPx * 2)
                 val start = raster.capturePoint(contact)
                 val end = raster.capturePoint(PixelPoint(
-                    contact.x + residualX / residualLength * radiusPx * 5,
-                    contact.y + residualY / residualLength * radiusPx * 5))
+                    contact.x + cueDirection.x * radiusPx * 5,
+                    contact.y + cueDirection.y * radiusPx * 5))
                 lastCueRay = CueRay(start, GuidePoint(end.x - start.x, end.y - start.y))
             }
             val guide = RecognizedGuide(

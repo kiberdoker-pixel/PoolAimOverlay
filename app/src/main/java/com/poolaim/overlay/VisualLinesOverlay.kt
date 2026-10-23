@@ -129,6 +129,15 @@ internal class VisualLinesOverlay(private val context: Context) {
                 val fresh = value.guide
                 lastSeenAt = now
                 if (old == null) {
+                    // GuideStabilityGate has already confirmed three consistent
+                    // frames. Do not demand three more frames in the renderer:
+                    // the extra delay can exceed the target-loss timeout.
+                    result = value
+                    capturedAt = capturedAtMs
+                    pending = null
+                    pendingCount = 0
+                    lastDecision = "цель подтверждена распознавателем"
+                } else if (false) {
                     val candidate = pending?.guide
                     val match = candidate != null &&
                         kotlin.math.hypot((candidate.origin.x-fresh.origin.x).toDouble(),

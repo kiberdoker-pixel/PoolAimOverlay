@@ -11,7 +11,9 @@ import kotlin.math.min
  */
 class GuideStabilityGate {
     companion object {
-        // The recognizer score is a ranking heuristic, not a calibrated confidence.\n        // Geometric validity and multi-frame consistency remain mandatory.\n        const val MIN_SCORE = 0.0f
+        // The recognizer score is a ranking heuristic, not a calibrated confidence.
+        // Geometric validity and multi-frame consistency remain mandatory.
+        const val MIN_SCORE = 0.0f
         private const val REQUIRED_FRAMES = 3
         private const val MAX_GAP_MS = 500L
         private const val POSITION_RADIUS_FRACTION = 0.4

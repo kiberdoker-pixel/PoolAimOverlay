@@ -331,15 +331,18 @@ class OpenCvGuideRecognizer {
                 TargetBallTrajectory.Point(chosen.x.toFloat(), chosen.y.toFloat())
             )
             if (cueDirection != null) {
-                // The contact region is estimated from the same branch. Avoid
-                // extrapolating from a cue ball that has not been recognized.
+                // The impact position is an estimate, not a recognized cue-ball
+                // center. Only emit a cue ray when its start is inside the ROI.
                 val contact = PixelPoint(refined.x - chosen.x * radiusPx * 2,
                     refined.y - chosen.y * radiusPx * 2)
-                val start = raster.capturePoint(contact)
-                val end = raster.capturePoint(PixelPoint(
-                    contact.x + cueDirection.x * radiusPx * 5,
-                    contact.y + cueDirection.y * radiusPx * 5))
-                lastCueRay = CueRay(start, GuidePoint(end.x - start.x, end.y - start.y))
+                if (contact.x in 0.0..raster.width.toDouble() &&
+                    contact.y in 0.0..raster.height.toDouble()) {
+                    val start = raster.capturePoint(contact)
+                    val end = raster.capturePoint(PixelPoint(
+                        contact.x + cueDirection.x * radiusPx * 5,
+                        contact.y + cueDirection.y * radiusPx * 5))
+                    lastCueRay = CueRay(start, GuidePoint(end.x - start.x, end.y - start.y))
+                }
             }
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(refined),

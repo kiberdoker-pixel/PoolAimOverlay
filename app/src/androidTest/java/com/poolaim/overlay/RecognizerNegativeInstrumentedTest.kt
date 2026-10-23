@@ -190,6 +190,37 @@ class RecognizerNegativeInstrumentedTest {
     }
 
     @Test
+    fun coloredClutterNearGuideWithoutAttachedBranchMustStayRejected() {
+        val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+        try {
+            bitmap.eraseColor(Color.rgb(16, 125, 162))
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                strokeWidth = 2f
+            }
+            canvas.drawLine(110f, 270f, 315f, 175f, paint)
+            paint.style = Paint.Style.STROKE
+            canvas.drawCircle(315f, 175f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            // Several colourful regions near the impact marker must not
+            // bypass the expanded cross-support patch in the absence of a
+            // genuinely attached outgoing white guide.
+            paint.color = Color.YELLOW
+            canvas.drawCircle(336f, 164f, 10f, paint)
+            paint.color = Color.RED
+            canvas.drawCircle(354f, 185f, 9f, paint)
+            paint.color = Color.MAGENTA
+            canvas.drawCircle(374f, 166f, 8f, paint)
+            paint.color = Color.WHITE
+            canvas.drawLine(408f, 133f, 447f, 113f, paint)
+            assertNoGuide(bitmap)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test
     fun fragmentedIncomingGuideWithAttachedOutgoingBranchShouldRemainForward() {
         val bitmap = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
         try {

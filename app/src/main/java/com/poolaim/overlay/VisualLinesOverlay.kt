@@ -59,6 +59,10 @@ internal class VisualLinesOverlay(private val context: Context) {
             setBackgroundColor(Color.TRANSPARENT)
         }
 
+        // Independent cue-ball trajectory input. Do not infer it from the object
+        // ball's guide: two differently coloured copies would be misleading.
+        private var cueTrajectory: List<TargetBallTrajectory.Point> = emptyList()
+
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.CYAN
             alpha = 255
@@ -203,6 +207,7 @@ internal class VisualLinesOverlay(private val context: Context) {
         fun clear() {
             removeCallbacks(expire)
             result = null
+            cueTrajectory = emptyList()
             pending = null
             pendingCount = 0
             lastSeenAt = 0L
@@ -284,6 +289,25 @@ internal class VisualLinesOverlay(private val context: Context) {
                         (to.y * sy).coerceIn(top, bottom),
                         paint
                     )
+                }
+                // Cue-ball path is drawn only when a separate cue hypothesis
+                // has been supplied; never fabricate it from the target path.
+                if (cueTrajectory.size >= 2) {
+                    paint.color = Color.CYAN
+                    paint.pathEffect = android.graphics.DashPathEffect(
+                        floatArrayOf(10f * resources.displayMetrics.density,
+                            8f * resources.displayMetrics.density), 0f)
+                    for (i in 0 until cueTrajectory.size - 1) {
+                        val from = cueTrajectory[i]
+                        val to = cueTrajectory[i + 1]
+                        canvas.drawLine(
+                            (from.x * sx).coerceIn(left, right),
+                            (from.y * sy).coerceIn(top, bottom),
+                            (to.x * sx).coerceIn(left, right),
+                            (to.y * sy).coerceIn(top, bottom),
+                            paint
+                        )
+                    }
                 }
             } finally {
                 canvas.restoreToCount(saved)

@@ -226,7 +226,10 @@ internal class VisualLinesOverlay(private val context: Context) {
                 origin.x in (b.left * frame.width)..(b.right * frame.width) &&
                 origin.y in (b.top * frame.height)..(b.bottom * frame.height) &&
                 result?.width == frame.width && result?.height == frame.height &&
-                result?.bounds == frame.bounds) {
+                result?.bounds == frame.bounds && result?.guide != null &&
+                SystemClock.elapsedRealtime() - capturedAt in 0 until MAX_AGE_MS &&
+                (lastSeenAt == 0L ||
+                    SystemClock.elapsedRealtime() - lastSeenAt < LOST_TARGET_MS)) {
                 TargetBallTrajectory.calculate(
                     start = origin,
                     direction = direction,

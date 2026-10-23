@@ -229,6 +229,11 @@ internal class VisualLinesOverlay(private val context: Context) {
             cueTrajectory = if (origin != null && direction != null &&
                 !TableBoundsOverlay.editing && b.isValid() &&
                 frame.width > 0 && frame.height > 0 &&
+                origin.x.isFinite() && origin.y.isFinite() &&
+                direction.x.isFinite() && direction.y.isFinite() &&
+                kotlin.math.hypot(direction.x.toDouble(), direction.y.toDouble()) > 0.001 &&
+                origin.x in (b.left * frame.width)..(b.right * frame.width) &&
+                origin.y in (b.top * frame.height)..(b.bottom * frame.height) &&
                 result?.width == frame.width && result?.height == frame.height &&
                 result?.bounds == frame.bounds) {
                 TargetBallTrajectory.calculate(

@@ -227,6 +227,24 @@ internal class VisualLinesOverlay(private val context: Context) {
                 origin.y in (b.top * frame.height)..(b.bottom * frame.height) &&
                 result?.width == frame.width && result?.height == frame.height &&
                 result?.bounds == frame.bounds && result?.guide != null &&
+                // A cyan ray belongs to the incoming frame, not to an older
+                // smoothed/held yellow path. Never mix two different shots.
+                result?.guide?.let { displayed ->
+                    frame.guide?.let { observed ->
+                        val distance = kotlin.math.hypot(
+                            (displayed.origin.x - observed.origin.x).toDouble(),
+                            (displayed.origin.y - observed.origin.y).toDouble())
+                        val dx = displayed.tip.x - displayed.origin.x
+                        val dy = displayed.tip.y - displayed.origin.y
+                        val ox = observed.tip.x - observed.origin.x
+                        val oy = observed.tip.y - observed.origin.y
+                        val lengths = kotlin.math.hypot(dx.toDouble(), dy.toDouble()) *
+                            kotlin.math.hypot(ox.toDouble(), oy.toDouble())
+                        distance <= observed.ballRadius * .35f &&
+                            lengths > 0.001 &&
+                            (dx * ox + dy * oy) / lengths >= kotlin.math.cos(Math.toRadians(5.0))
+                    } ?: false
+                } == true &&
                 SystemClock.elapsedRealtime() - capturedAt in 0 until MAX_AGE_MS &&
                 (lastSeenAt == 0L ||
                     SystemClock.elapsedRealtime() - lastSeenAt < LOST_TARGET_MS)) {

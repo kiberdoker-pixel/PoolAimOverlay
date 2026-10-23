@@ -42,6 +42,19 @@ internal class VisualLinesOverlay(private val context: Context) {
 
     fun drawStatus(): String = if (showing) view.drawStatus else "окно скрыто"
 
+    /**
+     * Accept an independently detected post-impact cue-ball ray.
+     * The ray is deliberately absent until its own recognition exists.
+     * Coordinates use the captured frame, not screen pixels.
+     */
+    fun updateCueTrajectory(
+        origin: TargetBallTrajectory.Point?,
+        direction: TargetBallTrajectory.Point?,
+        frame: FrameGuideResult
+    ) {
+        if (showing) view.updateCueTrajectory(origin, direction, frame)
+    }
+
     fun update(result: FrameGuideResult, capturedAtMs: Long) {
         if (showing) view.update(result, capturedAtMs)
     }
@@ -201,6 +214,30 @@ internal class VisualLinesOverlay(private val context: Context) {
                     if (lastSeenAt > 0) LOST_TARGET_MS - (SystemClock.elapsedRealtime() - lastSeenAt) else MAX_AGE_MS)
                 if (remaining > 0) postDelayed(expire, remaining)
             }
+            invalidate()
+        }
+
+        fun updateCueTrajectory(
+            origin: TargetBallTrajectory.Point?,
+            direction: TargetBallTrajectory.Point?,
+            frame: FrameGuideResult
+        ) {
+            val b = frame.bounds
+            cueTrajectory = if (origin != null && direction != null &&
+                !TableBoundsOverlay.editing && b.isValid() &&
+                frame.width > 0 && frame.height > 0 &&
+                result?.width == frame.width && result?.height == frame.height &&
+                result?.bounds == frame.bounds) {
+                TargetBallTrajectory.calculate(
+                    start = origin,
+                    direction = direction,
+                    left = b.left * frame.width,
+                    top = b.top * frame.height,
+                    right = b.right * frame.width,
+                    bottom = b.bottom * frame.height,
+                    maxBounces = 3
+                )
+            } else emptyList()
             invalidate()
         }
 

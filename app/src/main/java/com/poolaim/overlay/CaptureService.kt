@@ -178,8 +178,19 @@ class CaptureService : Service() {
                                 }
                                 lastAnalysisDuration = SystemClock.elapsedRealtime() - analysisStart
                                 if (detected.guide != null) lastConfirmedAt = capturedAt
+                                // Snapshot on the capture thread: the recognizer resets
+                                // this observation on the next frame.
+                                val cueRay = if (detected.guide != null && !TableBoundsOverlay.editing)
+                                    guideRecognizer.lastCueRay else null
                                 mainHandler.post {
-                                    if (!stopping) visualOverlay?.update(detected, capturedAt)
+                                    if (!stopping) {
+                                        visualOverlay?.update(detected, capturedAt)
+                                        visualOverlay?.updateCueTrajectory(
+                                            cueRay?.let { TargetBallTrajectory.Point(it.origin.x, it.origin.y) },
+                                            cueRay?.let { TargetBallTrajectory.Point(it.direction.x, it.direction.y) },
+                                            detected
+                                        )
+                                    }
                                 }
                             } catch (e: Exception) {
                                 clearRecognition("Ошибка анализа: ${e.javaClass.simpleName}", image.width, image.height)

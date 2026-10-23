@@ -256,7 +256,9 @@ internal class VisualLinesOverlay(private val context: Context) {
                             (origin.x - observed.origin.x).toDouble(),
                             (origin.y - observed.origin.y).toDouble())
                         originMatches && angleMatches &&
-                            cueDistance <= observed.ballRadius * 5.0f
+                            // The recognizer accepts impact distances up to 5.5 radii.
+                            // Do not silently reject its valid outer range here.
+                            cueDistance <= observed.ballRadius * 5.5f
                     } ?: false
                 } == true &&
                 SystemClock.elapsedRealtime() - capturedAt in 0 until MAX_AGE_MS &&

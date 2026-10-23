@@ -30,6 +30,11 @@ import kotlin.math.sin
  * for a visible guide: they are never used to simulate collisions with other balls.
  */
 class OpenCvGuideRecognizer {
+    /** Cue ray is produced only from the same winning branch as the object guide. */
+    data class CueRay(val origin: GuidePoint, val direction: GuidePoint)
+    var lastCueRay: CueRay? = null
+        private set
+
     private val nativeReady: Boolean by lazy {
         try {
             OpenCVLoader.initLocal()
@@ -42,6 +47,7 @@ class OpenCvGuideRecognizer {
 
     /** Synchronous: neither the Image nor its plane buffers are retained. */
     fun inspect(image: Image, bounds: TableBounds): FrameGuideResult {
+        lastCueRay = null
         val width = image.width
         val height = image.height
         if (!bounds.isValid()) return rejected(width, height, bounds, "Неверные границы стола")
@@ -69,6 +75,7 @@ class OpenCvGuideRecognizer {
 
     /** Same native pipeline, available for offline capture and instrumented validation. */
     fun inspectBitmap(bitmap: Bitmap, bounds: TableBounds): FrameGuideResult {
+        lastCueRay = null
         val width = bitmap.width
         val height = bitmap.height
         if (!bounds.isValid()) return rejected(width, height, bounds, "Неверные границы стола")
@@ -179,7 +186,7 @@ class OpenCvGuideRecognizer {
 
             // Branch-first: select the short outgoing guide, not a detected ball.
             data class Branch(val origin: PixelPoint, val direction: PixelPoint,
-                val score: Double)
+                val incoming: PixelPoint, val score: Double)
             val radiusPx = shortSide * .030
             val longSegments = segments.filter { it.third >= shortSide * .12 }
             val shortSegments = segments.filter {
@@ -300,7 +307,7 @@ class OpenCvGuideRecognizer {
                             crossPairs++
                             val score = alignment + min(contrast, 350) / 1000.0 -
                                 lateral / (radiusPx * 10) + colored * .015
-                            candidates.add(Branch(near, PixelPoint(ux, uy), score))
+                            candidates.add(Branch(near, PixelPoint(ux, uy), PixelPoint(ix, iy), score))
                         }
                     }
                 }
@@ -315,6 +322,25 @@ class OpenCvGuideRecognizer {
             val chosen = best.direction
             val centerScore = best.score.coerceIn(0.0, 1.0)
             val branchAngle = Math.toDegrees(kotlin.math.atan2(chosen.y, chosen.x)).roundToInt()
+            // The incoming Hough segment and outgoing object guide are distinct
+            // observations. Approximate the cue ball's residual tangent after
+            // transferring the normal component to the object ball.
+            val incoming = best.incoming
+            val dot = incoming.x * chosen.x + incoming.y * chosen.y
+            val residualX = incoming.x - dot * chosen.x
+            val residualY = incoming.y - dot * chosen.y
+            val residualLength = hypot(residualX, residualY)
+            if (dot > 0.0 && residualLength >= .05) {
+                // The contact region is estimated from the same branch. Avoid
+                // extrapolating from a cue ball that has not been recognized.
+                val contact = PixelPoint(refined.x - chosen.x * radiusPx * 2,
+                    refined.y - chosen.y * radiusPx * 2)
+                val start = raster.capturePoint(contact)
+                val end = raster.capturePoint(PixelPoint(
+                    contact.x + residualX / residualLength * radiusPx * 5,
+                    contact.y + residualY / residualLength * radiusPx * 5))
+                lastCueRay = CueRay(start, GuidePoint(end.x - start.x, end.y - start.y))
+            }
             val guide = RecognizedGuide(
                 origin = raster.capturePoint(refined),
                 tip = raster.capturePoint(PixelPoint(

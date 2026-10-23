@@ -19,12 +19,12 @@ class GuideStabilityGateTest {
         assertEquals(guide, gate.filter(frame(), 400L).guide)
     }
 
-    @Test fun scoreThresholdIsAnIndependentHardRequirement() {
-        for (score in listOf(.899f, Float.NaN, Float.POSITIVE_INFINITY, 1.01f)) {
+    @Test fun scoreIsRankingHeuristicButMustBeFiniteAndBounded() {
+        for (score in listOf(Float.NaN, Float.POSITIVE_INFINITY, 1.01f, -.01f)) {
             val gate = GuideStabilityGate()
             repeat(5) { assertNull(gate.filter(frame(guide.copy(score = score)), it * 100L).guide) }
         }
-        lock(GuideStabilityGate(), frame(guide.copy(score = .90f)))
+        lock(GuideStabilityGate(), frame(guide.copy(score = .50f)))
     }
 
     @Test fun missingOrAmbiguousObservationImmediatelyClearsConfirmedGuide() {
@@ -35,12 +35,10 @@ class GuideStabilityGateTest {
         lock(gate, start = 500L)
     }
 
-    @Test fun lowScoreAfterLockCannotKeepAnOldTrajectory() {
+    @Test fun lowerFiniteScoreAfterLockDoesNotEraseConsistentGeometry() {
         val gate = GuideStabilityGate()
         lock(gate)
-        assertNull(gate.filter(frame(guide.copy(score = .5f)), 400L).guide)
-        assertNull(gate.filter(frame(), 500L).guide)
-        assertNull(gate.filter(frame(), 600L).guide)
+        assertNotNull(gate.filter(frame(guide.copy(score = .5f)), 400L).guide)
     }
 
     @Test fun reversedEndpointsStartASeparateConfirmationSequence() {

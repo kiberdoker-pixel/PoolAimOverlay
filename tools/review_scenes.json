@@ -1,0 +1,98 @@
+[
+  {
+    "video": "25046.mp4",
+    "second": 5,
+    "scene": "no-aim",
+    "note": "Balls scattered; no clear active aiming guide"
+  },
+  {
+    "video": "25046.mp4",
+    "second": 10,
+    "scene": "no-aim",
+    "note": "Static table before aiming"
+  },
+  {
+    "video": "25046.mp4",
+    "second": 20,
+    "scene": "aiming",
+    "note": "Long cue line and ghost-contact marker; inspect target branch"
+  },
+  {
+    "video": "25046.mp4",
+    "second": 30,
+    "scene": "no-aim",
+    "note": "Turn transition"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 10,
+    "scene": "no-aim",
+    "note": "Break aftermath; reject incidental white features"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 30,
+    "scene": "aiming",
+    "note": "Aim from lower-left toward upper-left ball cluster"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 50,
+    "scene": "aiming",
+    "note": "Long incoming line across table"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 70,
+    "scene": "aiming",
+    "note": "Diagonal aim with multiple balls near guide"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 90,
+    "scene": "no-aim",
+    "note": "No active cue guide"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 110,
+    "scene": "aiming",
+    "note": "Diagonal aim near top-left cushion"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 130,
+    "scene": "no-aim",
+    "note": "No active aiming guide"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 150,
+    "scene": "aiming",
+    "note": "Aim from left to upper-right near cushion"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 170,
+    "scene": "no-aim",
+    "note": "Balls only"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 190,
+    "scene": "no-aim",
+    "note": "No active guide"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 210,
+    "scene": "aiming",
+    "note": "Late-game shot with cue and ghost marker"
+  },
+  {
+    "video": "24910.mp4",
+    "second": 225,
+    "scene": "no-aim",
+    "note": "Late-game table without aiming"
+  }
+]

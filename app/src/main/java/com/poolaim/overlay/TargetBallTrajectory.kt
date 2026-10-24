@@ -7,6 +7,36 @@ import kotlin.math.hypot
 internal object TargetBallTrajectory {
     data class Point(val x: Float, val y: Float)
 
+    /**
+     * Estimate the cue ball's post-impact direction from the independently
+     * observed incoming cue ray and the object ball's outgoing direction.
+     * Equal-mass, frictionless collision approximation: remove the incoming
+     * velocity component transferred along the object ball's path.
+     *
+     * Returns null for straight-on hits or inconsistent/opposing observations:
+     * in those cases the cue ball has no reliable lateral travel direction.
+     * Does not account for spin, throw, or cushion physics.
+     */
+    fun cueAfterImpact(incoming: Point, objectOutgoing: Point): Point? {
+        if (!listOf(incoming.x, incoming.y, objectOutgoing.x, objectOutgoing.y)
+                .all { it.isFinite() }) return null
+        val inLength = hypot(incoming.x.toDouble(), incoming.y.toDouble())
+        val outLength = hypot(objectOutgoing.x.toDouble(), objectOutgoing.y.toDouble())
+        if (inLength < 1e-6 || outLength < 1e-6) return null
+        val ix = incoming.x / inLength
+        val iy = incoming.y / inLength
+        val ox = objectOutgoing.x / outLength
+        val oy = objectOutgoing.y / outLength
+        val transfer = ix * ox + iy * oy
+        if (transfer <= 0.0) return null
+        val rx = ix - transfer * ox
+        val ry = iy - transfer * oy
+        val residual = hypot(rx, ry)
+        // Near head-on hits produce an unstable lateral direction.
+        if (residual < 0.05) return null
+        return Point((rx / residual).toFloat(), (ry / residual).toFloat())
+    }
+
     /** Three reflections produce four legs: the initial leg and three reflected legs. */
     fun calculate(
         start: Point,

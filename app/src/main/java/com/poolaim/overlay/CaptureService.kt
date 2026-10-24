@@ -45,6 +45,9 @@ class CaptureService : Service() {
     private val guideRecognizer = OpenCvGuideRecognizer()
     private val guideGate = GuideStabilityGate()
     private var lastAnalysisAt = 0L
+    private var analysisCount = 0L
+    private var lastAnalysisDuration = 0L
+    private var lastConfirmedAt = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -156,8 +159,10 @@ class CaptureService : Service() {
                     try {
                         frameCount++
                         val capturedAt = SystemClock.elapsedRealtime()
-                        if (!stopping && capturedAt - lastAnalysisAt >= 120L) {
+                        if (!stopping && capturedAt - lastAnalysisAt >= 80L) {
                             lastAnalysisAt = capturedAt
+                            analysisCount++
+                            val analysisStart = SystemClock.elapsedRealtime()
                             try {
                                 val bounds = TableBoundsOverlay.snapshot()
                                 val detected = if (TableBoundsOverlay.editing) {
@@ -165,11 +170,27 @@ class CaptureService : Service() {
                                     FrameGuideResult(image.width, image.height, bounds,
                                         reason = "Настройка границ стола · прогноз скрыт")
                                 } else {
-                                    guideGate.filter(guideRecognizer.inspect(image, bounds), capturedAt)
+                                    guideRecognizer.inspect(image, bounds).let { raw ->
+                                        guideGate.filter(raw, capturedAt).also { gated ->
+                                            detectorResult = "${gated.reason} · CV: ${raw.reason}"
+                                        }
+                                    }
                                 }
-                                detectorResult = detected.reason
+                                lastAnalysisDuration = SystemClock.elapsedRealtime() - analysisStart
+                                if (detected.guide != null) lastConfirmedAt = capturedAt
+                                // Snapshot on the capture thread: the recognizer resets
+                                // this observation on the next frame.
+                                val cueRay = if (detected.guide != null && !TableBoundsOverlay.editing)
+                                    guideRecognizer.lastCueRay else null
                                 mainHandler.post {
-                                    if (!stopping) visualOverlay?.update(detected, capturedAt)
+                                    if (!stopping) {
+                                        visualOverlay?.update(detected, capturedAt)
+                                        visualOverlay?.updateCueTrajectory(
+                                            cueRay?.let { TargetBallTrajectory.Point(it.origin.x, it.origin.y) },
+                                            cueRay?.let { TargetBallTrajectory.Point(it.direction.x, it.direction.y) },
+                                            detected
+                                        )
+                                    }
                                 }
                             } catch (e: Exception) {
                                 clearRecognition("Ошибка анализа: ${e.javaClass.simpleName}", image.width, image.height)
@@ -180,9 +201,11 @@ class CaptureService : Service() {
                             }
                         }
                         if (frameCount == 1L || frameCount % 30L == 0L) {
-                            val msg = "Кадров: $frameCount · $detectorResult"
+                            val msg = "Кадров: $frameCount · анализов: $analysisCount · ${lastAnalysisDuration}мс · $detectorResult"
                             report(msg)
-                            mainHandler.post { overlay?.update(msg) }
+                            mainHandler.post {
+                                overlay?.update("$msg\nПоследняя цель: ${if (lastConfirmedAt == 0L) "не найдена" else "${SystemClock.elapsedRealtime() - lastConfirmedAt}мс назад"}\nРисование: ${visualOverlay?.drawStatus() ?: "нет окна"}")
+                            }
                             getSystemService(NotificationManager::class.java)
                                 .notify(NOTIFICATION_ID, notification(msg))
                         }

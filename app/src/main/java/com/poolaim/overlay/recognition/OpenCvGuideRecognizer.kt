@@ -2,6 +2,7 @@ package com.poolaim.overlay.recognition
 
 import android.graphics.Bitmap
 import android.media.Image
+import com.poolaim.overlay.TargetBallTrajectory
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -30,6 +31,11 @@ import kotlin.math.sin
  * for a visible guide: they are never used to simulate collisions with other balls.
  */
 class OpenCvGuideRecognizer {
+    /** Cue ray is produced only from the same winning branch as the object guide. */
+    data class CueRay(val origin: GuidePoint, val direction: GuidePoint)
+    var lastCueRay: CueRay? = null
+        private set
+
     private val nativeReady: Boolean by lazy {
         try {
             OpenCVLoader.initLocal()
@@ -42,6 +48,7 @@ class OpenCvGuideRecognizer {
 
     /** Synchronous: neither the Image nor its plane buffers are retained. */
     fun inspect(image: Image, bounds: TableBounds): FrameGuideResult {
+        lastCueRay = null
         val width = image.width
         val height = image.height
         if (!bounds.isValid()) return rejected(width, height, bounds, "Неверные границы стола")
@@ -69,6 +76,7 @@ class OpenCvGuideRecognizer {
 
     /** Same native pipeline, available for offline capture and instrumented validation. */
     fun inspectBitmap(bitmap: Bitmap, bounds: TableBounds): FrameGuideResult {
+        lastCueRay = null
         val width = bitmap.width
         val height = bitmap.height
         if (!bounds.isValid()) return rejected(width, height, bounds, "Неверные границы стола")
@@ -111,7 +119,7 @@ class OpenCvGuideRecognizer {
         val bottom = ceil(bounds.bottom * height).toInt().coerceIn(top + 1, height)
         val roiWidth = right - left
         val roiHeight = bottom - top
-        val scale = min(1.0, 960.0 / max(roiWidth, roiHeight))
+        val scale = min(1.0, 720.0 / max(roiWidth, roiHeight))
         val sampleWidth = max(1, (roiWidth * scale).roundToInt())
         val sampleHeight = max(1, (roiHeight * scale).roundToInt())
         val scaleX = roiWidth.toDouble() / sampleWidth
@@ -156,16 +164,16 @@ class OpenCvGuideRecognizer {
             Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
             // Real 8 Ball Pool guides can be neutral gray rather than bright white.
             // Preserve the low-saturation gate so cyan overlay and colored cloth stay out.
-            Core.inRange(hsv, Scalar(0.0, 0.0, 110.0), Scalar(180.0, 55.0, 255.0), mask)
+            Core.inRange(hsv, Scalar(0.0, 0.0, 85.0), Scalar(180.0, 55.0, 255.0), mask)
             val shortSide = min(raster.width, raster.height).toDouble()
+            // The game renders dotted aim guides. A 2px Hough gap split the incoming
+            // guide into dozens of short pieces (observed in gameplay recording).
             Imgproc.HoughLinesP(mask, lines, 1.0, PI / 180.0,
-                max(10, (shortSide * .035).roundToInt()), shortSide * .04, 2.0)
+                max(10, (shortSide * .035).roundToInt()), shortSide * .04, max(3.0, shortSide * .025))
             if (lines.empty()) return none("Линия не найдена")
 
-            // Line-only mode: never require balls or circle recognition.
-            // Prefer the longest detected segment, which is typically the game's
-            // main aiming guide. This is a geometric approximation; a lone segment
-            // does not establish its travel direction with certainty.
+            // Build 98: a guide is valid only when attached to the game's hollow
+            // contact marker. A long cue line alone must never produce a prediction.
             val segments = (0 until lines.rows()).mapNotNull { index ->
                 val v = lines.get(index, 0)
                 if (v == null || v.size < 4) null else {
@@ -173,28 +181,226 @@ class OpenCvGuideRecognizer {
                     val b = PixelPoint(v[2], v[3])
                     Triple(a, b, hypot(b.x - a.x, b.y - a.y))
                 }
-            }.filter { it.third >= shortSide * .08 }
-            val longest = segments.maxByOrNull { it.third }
-                ?: return none("Достаточно длинная линия не найдена")
-            val a = longest.first
-            val b = longest.second
-            // Hough endpoints are unordered. Use the outer endpoint as the source
-            // and extend toward the table centre as a stable line-only heuristic.
-            // No balls are identified or used.
-            val cx = raster.width / 2.0
-            val cy = raster.height / 2.0
-            val aDistance = hypot(a.x - cx, a.y - cy)
-            val bDistance = hypot(b.x - cx, b.y - cy)
-            val origin = if (aDistance >= bDistance) a else b
-            val tip = if (aDistance >= bDistance) b else a
+            }.filter { it.third >= shortSide * .025 }
+            // Branch-first recognition does not use ball circles. Avoid an
+            // expensive HoughCircles pass on every captured frame.
+
+            // Branch-first: select the short outgoing guide, not a detected ball.
+            data class Branch(val origin: PixelPoint, val direction: PixelPoint,
+                val incoming: PixelPoint, val impact: PixelPoint, val score: Double)
+            val radiusPx = shortSide * .030
+            val longSegments = segments.filter { it.third >= shortSide * .12 }
+            val shortSegments = segments.filter {
+                it.third >= radiusPx * 1.6 && it.third <= shortSide * .18
+            }
+            val candidates = mutableListOf<Branch>()
+            // Track how many pairs survive each filter in actual gameplay.
+            var alignedPairs = 0
+            var positionedPairs = 0
+            var contrastPairs = 0
+            var coloredPairs = 0
+            var targetPairs = 0
+            var crossPairs = 0
+            for (incoming in longSegments) {
+                for ((impact, cue) in listOf(incoming.first to incoming.second,
+                        incoming.second to incoming.first)) {
+                    val ix = (impact.x - cue.x) / incoming.third
+                    val iy = (impact.y - cue.y) / incoming.third
+                    // Reject segments whose bounding boxes cannot reach the
+                    // collision neighbourhood. This is a conservative spatial
+                    // prefilter; the exact forward/lateral checks remain below.
+                    val reach = radiusPx * 8.0
+                    for (outgoing in shortSegments) {
+                        val minX = min(outgoing.first.x, outgoing.second.x) - reach
+                        val maxX = max(outgoing.first.x, outgoing.second.x) + reach
+                        val minY = min(outgoing.first.y, outgoing.second.y) - reach
+                        val maxY = max(outgoing.first.y, outgoing.second.y) + reach
+                        if (impact.x !in minX..maxX || impact.y !in minY..maxY)
+                            continue
+                        for ((near, far) in listOf(outgoing.first to outgoing.second,
+                                outgoing.second to outgoing.first)) {
+                            val ux = (far.x - near.x) / outgoing.third
+                            val uy = (far.y - near.y) / outgoing.third
+                            val alignment = ix * ux + iy * uy
+                            if (alignment < .65) continue
+                            alignedPairs++
+                            val dx = near.x - impact.x
+                            val dy = near.y - impact.y
+                            val forward = dx * ix + dy * iy
+                            val lateral = abs(dx * iy - dy * ix)
+                            if (forward !in radiusPx * 1.0..radiusPx * 5.0 ||
+                                lateral > radiusPx * 2.4) continue
+                            positionedPairs++
+                            // Local contrast validates the collision neighbourhood
+                            // without recognizing individual balls.
+                            val mid = PixelPoint((impact.x + near.x) / 2,
+                                (impact.y + near.y) / 2)
+                            val sample = rgb(raster, mid.x, mid.y) ?: continue
+                            val felt = rgb(raster, mid.x, mid.y + radiusPx * 3)
+                                ?: continue
+                            val contrast = sample.indices.sumOf { abs(sample[it] - felt[it]) }
+                            if (contrast < 100) continue
+                            contrastPairs++
+                            // In actual gameplay the contact marker and the target
+                            // ball are separated by felt. Requiring 3/7 coloured
+                            // pixels *along that gap* rejects valid branches.
+                            // Instead require compact colour evidence around the
+                            // start of the outgoing guide. This is local pixel
+                            // evidence, not global ball detection.
+                            var colored = 0
+                            var targetSupport = 0
+                            for (back in listOf(.25, .55, .85, 1.15)) {
+                                for (side in listOf(-.65, -.30, 0.0, .30, .65)) {
+                                    val px = near.x - ux * radiusPx * back -
+                                        uy * radiusPx * side
+                                    val py = near.y - uy * radiusPx * back +
+                                        ux * radiusPx * side
+                                    val probe = rgb(raster, px, py) ?: continue
+                                    val spread = (probe.maxOrNull() ?: 0) -
+                                        (probe.minOrNull() ?: 0)
+                                    if (spread >= 65 && (probe.maxOrNull() ?: 0) >= 95) {
+                                        colored++
+                                        if (back >= .55) targetSupport++
+                                    }
+                                }
+                            }
+                            if (colored < 3) continue
+                            coloredPairs++
+                            if (targetSupport < 2) continue
+                            targetPairs++
+                            // Look BEHIND the start of the outgoing guide:
+                            // its far endpoint lies at the edge of the target
+                            // ball, so sampling directly at that endpoint
+                            // misses the ball and rejects valid shots.
+                            var crossSupport = 0
+                            // The target-ball colour can be offset from the
+                            // Hough endpoint by anti-aliasing or a dashed guide.
+                            // Search a *small* patch behind the outgoing line,
+                            // rather than requiring two exact pixels to land
+                            // on opposite sides of the ball at once.
+                            for (side in listOf(-1.0, 1.0)) {
+                                var sideSupported = false
+                                for (back in listOf(.65, .95, 1.25)) {
+                                    for (across in listOf(.20, .40, .60)) {
+                                        val px = near.x - ux * radiusPx * back -
+                                            uy * radiusPx * across * side
+                                        val py = near.y - uy * radiusPx * back +
+                                            ux * radiusPx * across * side
+                                        val probe = rgb(raster, px, py) ?: continue
+                                        val background = rgb(raster,
+                                            px - uy * radiusPx * 3.0 * side,
+                                            py + ux * radiusPx * 3.0 * side) ?: continue
+                                        val difference = probe.indices.sumOf {
+                                            abs(probe[it] - background[it])
+                                        }
+                                        val spread = (probe.maxOrNull() ?: 0) -
+                                            (probe.minOrNull() ?: 0)
+                                        if (difference >= 115 && spread >= 65) {
+                                            sideSupported = true
+                                            break
+                                        }
+                                    }
+                                    if (sideSupported) break
+                                }
+                                if (sideSupported) crossSupport++
+                            }
+                            if (crossSupport < 2) continue
+                            crossPairs++
+                            val score = alignment + min(contrast, 350) / 1000.0 -
+                                lateral / (radiusPx * 10) + colored * .015
+                            candidates.add(Branch(near, PixelPoint(ux, uy), PixelPoint(ix, iy), impact, score))
+                        }
+                    }
+                }
+            }
+            val best = candidates.maxByOrNull { it.score }
+                ?: return none("Нет исходящей · Д${longSegments.size} К${shortSegments.size} · А${alignedPairs} П${positionedPairs} К${contrastPairs} Ц${coloredPairs} Ш${targetPairs} Ф${crossPairs}")
+            if (candidates.any {
+                    it.score > best.score - .08 &&
+                    hypot(it.origin.x - best.origin.x, it.origin.y - best.origin.y) > radiusPx * 3
+                }) return none("Неоднозначная исходящая линия")
+            // Two incoming guides can lead to the same outgoing target guide.
+            // Their cue-ball residual trajectories would disagree, so do not
+            // pick an arbitrary cyan ray just because the yellow ray matches.
+            val ambiguousIncoming = candidates.any { alternative ->
+                alternative !== best &&
+                    alternative.score > best.score - .08 &&
+                    hypot(alternative.origin.x - best.origin.x,
+                        alternative.origin.y - best.origin.y) <= radiusPx * 3 &&
+                    // A nearby but distinct incoming endpoint may represent
+                    // another ball or an unrelated Hough segment. Compare
+                    // impact neighbourhoods before declaring ambiguity.
+                    hypot(alternative.impact.x - best.impact.x,
+                        alternative.impact.y - best.impact.y) <= radiusPx * 1.5 &&
+                    // Only compare candidates that point the object ball
+                    // along essentially the same outgoing guide.
+                    (alternative.direction.x * best.direction.x +
+                        alternative.direction.y * best.direction.y) >=
+                        kotlin.math.cos(Math.toRadians(5.0)) &&
+                    (alternative.incoming.x * best.incoming.x +
+                        alternative.incoming.y * best.incoming.y) <
+                        kotlin.math.cos(Math.toRadians(12.0))
+            }
+            val refined = best.origin
+            val chosen = best.direction
+            val centerScore = best.score.coerceIn(0.0, 1.0)
+            val branchAngle = Math.toDegrees(kotlin.math.atan2(chosen.y, chosen.x)).roundToInt()
+            // The incoming Hough segment and outgoing object guide are distinct
+            // observations. Approximate the cue ball's residual tangent after
+            // transferring the normal component to the object ball.
+            val cueDirection = TargetBallTrajectory.cueAfterImpact(
+                TargetBallTrajectory.Point(best.incoming.x.toFloat(), best.incoming.y.toFloat()),
+                TargetBallTrajectory.Point(chosen.x.toFloat(), chosen.y.toFloat())
+            )
+            // A nearly head-on impact has no stable tangent prediction.
+            // A competing incoming guide also makes the cyan prediction
+            // ambiguous even if the yellow object guide is unambiguous.
+            if (cueDirection != null && !ambiguousIncoming) {
+                // Use the observed incoming guide endpoint at the collision
+                // neighbourhood. A fixed offset behind the target guide can
+                // move the cyan origin by several ball radii on angled hits.
+                // This is still an estimate, not a detected cue-ball centre.
+                val contact = best.impact
+                // A Hough segment endpoint is not always the collision point:
+                // require it to be in the same local region as the outgoing
+                // guide before allowing the cyan trajectory.
+                val impactDistance = hypot(contact.x - refined.x, contact.y - refined.y)
+                // Pair selection already requires the outgoing guide to start
+                // 1–5 ball radii in front of the incoming segment. Keep that
+                // geometrically supported range here; a tighter duplicate
+                // filter would silently discard valid glancing shots.
+                if (impactDistance >= radiusPx * 1.0 &&
+                    impactDistance <= radiusPx * 5.5 &&
+                    contact.x in 0.0..raster.width.toDouble() &&
+                    contact.y in 0.0..raster.height.toDouble()) {
+                    val start = raster.capturePoint(contact)
+                    val end = raster.capturePoint(PixelPoint(
+                        contact.x + cueDirection.x * radiusPx * 5,
+                        contact.y + cueDirection.y * radiusPx * 5))
+                    val left = bounds.left * captureWidth
+                    val top = bounds.top * captureHeight
+                    val right = bounds.right * captureWidth
+                    val bottom = bounds.bottom * captureHeight
+                    // The sampled ROI can be rounded outward by up to a pixel.
+                    // Validate the *actual* capture-space start before drawing.
+                    if (start.x in left..right && start.y in top..bottom) {
+                        lastCueRay = CueRay(start,
+                            GuidePoint(end.x - start.x, end.y - start.y))
+                    }
+                }
+            }
             val guide = RecognizedGuide(
-                origin = raster.capturePoint(origin),
-                tip = raster.capturePoint(tip),
-                ballRadius = (shortSide * .02).toFloat(),
-                score = .95f
+                origin = raster.capturePoint(refined),
+                tip = raster.capturePoint(PixelPoint(
+                    refined.x + chosen.x * radiusPx * 5,
+                    refined.y + chosen.y * radiusPx * 5)),
+                ballRadius = (radiusPx * raster.scaleX).toFloat(),
+                // Evidence score, not a calibrated probability. Avoid reporting a
+                // fixed 95% for every accepted frame regardless of guide alignment.
+                score = centerScore.toFloat()
             )
             return FrameGuideResult(captureWidth, captureHeight, bounds, guide,
-                "Режим линии: найдено сегментов=${segments.size}")
+                "Исходящая линия · угол=${branchAngle}° · 3 отражения")
         } finally {
             lines.release()
             mask.release()

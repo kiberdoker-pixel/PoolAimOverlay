@@ -301,8 +301,8 @@ internal class VisualLinesOverlay(private val context: Context) {
 
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val r = result ?: run { drawStatus = "нет подтверждённой линии"; return }
-            val guide = r.guide ?: run { drawStatus = "нет координат линии"; return }
+            val r = result ?: run { drawStatus = "нет подтверждённой линии · $cueStatus"; return }
+            val guide = r.guide ?: run { drawStatus = "нет координат линии · $cueStatus"; return }
             if (r.width <= 0 || r.height <= 0 || !guide.score.isFinite()) {
                 drawStatus = "неверный кадр или оценка"; return
             }

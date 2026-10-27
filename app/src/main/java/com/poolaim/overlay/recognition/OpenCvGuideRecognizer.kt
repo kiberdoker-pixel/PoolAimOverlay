@@ -322,9 +322,16 @@ class OpenCvGuideRecognizer {
             }
             val best = candidates.maxByOrNull { it.score }
                 ?: return none("Нет исходящей · Д${longSegments.size} К${shortSegments.size} · А${alignedPairs} П${positionedPairs} К${contrastPairs} Ц${coloredPairs} Ш${targetPairs} Ф${crossPairs}")
+            // Hough often splits the same guide into multiple fragments.
+            // Comparing only their endpoints rejects a real line as ambiguous.
+            // Require a genuinely different direction as well as a distinct
+            // origin before treating a close-scoring branch as a rival.
             if (candidates.any {
                     it.score > best.score - .08 &&
-                    hypot(it.origin.x - best.origin.x, it.origin.y - best.origin.y) > radiusPx * 3
+                    hypot(it.origin.x - best.origin.x, it.origin.y - best.origin.y) > radiusPx * 3 &&
+                    (it.direction.x * best.direction.x +
+                        it.direction.y * best.direction.y) <
+                        kotlin.math.cos(Math.toRadians(8.0))
                 }) return none("Неоднозначная исходящая линия")
             // Two incoming guides can lead to the same outgoing target guide.
             // Their cue-ball residual trajectories would disagree, so do not

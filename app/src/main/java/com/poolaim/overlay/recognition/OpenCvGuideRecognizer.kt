@@ -264,9 +264,16 @@ class OpenCvGuideRecognizer {
                                     }
                                 }
                             }
-                            if (colored < 3) continue
+                            // Neutral white/gray balls have no saturated colour.
+                            // Require much stronger geometric and contrast evidence
+                            // when allowing this path; cross-support is still checked.
+                            val neutralBallCandidate =
+                                alignment >= .985 &&
+                                lateral <= radiusPx * .45 &&
+                                contrast >= 180
+                            if (colored < 3 && !neutralBallCandidate) continue
                             coloredPairs++
-                            if (targetSupport < 2) continue
+                            if (targetSupport < 2 && !neutralBallCandidate) continue
                             targetPairs++
                             // Look BEHIND the start of the outgoing guide:
                             // its far endpoint lies at the edge of the target

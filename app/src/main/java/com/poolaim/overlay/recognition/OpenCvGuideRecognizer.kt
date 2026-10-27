@@ -228,7 +228,10 @@ class OpenCvGuideRecognizer {
                             val dy = near.y - impact.y
                             val forward = dx * ix + dy * iy
                             val lateral = abs(dx * iy - dy * ix)
-                            if (forward !in radiusPx * 1.0..radiusPx * 5.0 ||
+                            // The outgoing guide often begins at the contact ring itself.
+                            // Requiring its first endpoint to be a full ball radius
+                            // beyond impact incorrectly rejects those real shots.
+                            if (forward !in -radiusPx * .4..radiusPx * 5.0 ||
                                 lateral > radiusPx * 2.4) continue
                             positionedPairs++
                             // Local contrast validates the collision neighbourhood

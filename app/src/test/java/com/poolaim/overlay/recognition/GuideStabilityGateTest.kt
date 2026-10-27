@@ -19,12 +19,12 @@ class GuideStabilityGateTest {
         assertEquals(guide, gate.filter(frame(), 400L).guide)
     }
 
-    @Test fun scoreThresholdIsAnIndependentHardRequirement() {
-        for (score in listOf(.899f, Float.NaN, Float.POSITIVE_INFINITY, 1.01f)) {
+    @Test fun scoreIsRankingHeuristicButMustBeFiniteAndBounded() {
+        for (score in listOf(Float.NaN, Float.POSITIVE_INFINITY, 1.01f, -.01f)) {
             val gate = GuideStabilityGate()
             repeat(5) { assertNull(gate.filter(frame(guide.copy(score = score)), it * 100L).guide) }
         }
-        lock(GuideStabilityGate(), frame(guide.copy(score = .90f)))
+        lock(GuideStabilityGate(), frame(guide.copy(score = .50f)))
     }
 
     @Test fun missingOrAmbiguousObservationImmediatelyClearsConfirmedGuide() {
@@ -35,12 +35,10 @@ class GuideStabilityGateTest {
         lock(gate, start = 500L)
     }
 
-    @Test fun lowScoreAfterLockCannotKeepAnOldTrajectory() {
+    @Test fun lowerFiniteScoreAfterLockDoesNotEraseConsistentGeometry() {
         val gate = GuideStabilityGate()
         lock(gate)
-        assertNull(gate.filter(frame(guide.copy(score = .5f)), 400L).guide)
-        assertNull(gate.filter(frame(), 500L).guide)
-        assertNull(gate.filter(frame(), 600L).guide)
+        assertNotNull(gate.filter(frame(guide.copy(score = .5f)), 400L).guide)
     }
 
     @Test fun reversedEndpointsStartASeparateConfirmationSequence() {
@@ -110,6 +108,14 @@ class GuideStabilityGateTest {
         lock(gate, start = 400L)
     }
 
+    @Test fun extrapolatedTipOutsideRailDoesNotSuppressValidAim() {
+        val nearRail = frame(guide.copy(
+            origin = GuidePoint(875f, 300f),
+            tip = GuidePoint(925f, 300f)
+        ))
+        lock(GuideStabilityGate(), nearRail)
+    }
+
     @Test fun rejectsNonFiniteDegenerateAndOutOfBoundsGeometry() {
         val invalid = listOf(
             frame().copy(width = 0), frame().copy(height = -1),
@@ -122,8 +128,7 @@ class GuideStabilityGateTest {
             frame(guide.copy(ballRadius = 0f)), frame(guide.copy(ballRadius = -1f)),
             frame(guide.copy(ballRadius = Float.NaN)), frame(guide.copy(ballRadius = 500f)),
             // Capture coordinates are inside the ROI, but outside the ball-center inset.
-            frame(guide.copy(origin = GuidePoint(105f, 300f))),
-            frame(guide.copy(tip = GuidePoint(895f, 300f)))
+            frame(guide.copy(origin = GuidePoint(105f, 300f)))
         )
         for (bad in invalid) {
             val gate = GuideStabilityGate()

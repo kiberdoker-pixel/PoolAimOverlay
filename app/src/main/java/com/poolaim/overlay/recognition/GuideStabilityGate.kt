@@ -11,7 +11,9 @@ import kotlin.math.min
  */
 class GuideStabilityGate {
     companion object {
-        const val MIN_SCORE = 0.90f
+        // The recognizer score is a ranking heuristic, not a calibrated confidence.
+        // Geometric validity and multi-frame consistency remain mandatory.
+        const val MIN_SCORE = 0.0f
         private const val REQUIRED_FRAMES = 3
         private const val MAX_GAP_MS = 500L
         private const val POSITION_RADIUS_FRACTION = 0.4
@@ -57,7 +59,7 @@ class GuideStabilityGate {
         }
         lastTimeMs = nowMs
         return if (consecutive >= REQUIRED_FRAMES) result.copy(
-            reason = "Устойчивый кандидат линии · 3 отражения"
+            reason = "Не уверен: направление не проверено · 3 отражения"
         ) else result.copy(
             guide = null, reason = "Подтверждение линии: $consecutive/$REQUIRED_FRAMES"
         )
@@ -76,7 +78,11 @@ class GuideStabilityGate {
         if (left >= right || top >= bottom) return false
         fun inside(point: GuidePoint): Boolean = point.x.isFinite() && point.y.isFinite() &&
             point.x.toDouble() in left..right && point.y.toDouble() in top..bottom
-        return inside(guide.origin) && inside(guide.tip) &&
+        // The tip is an extrapolated direction marker (five ball radii),
+        // not a second ball centre. Near a cushion it can legitimately lie
+        // outside the table; the trajectory calculator clips the visible ray.
+        return inside(guide.origin) &&
+            guide.tip.x.isFinite() && guide.tip.y.isFinite() &&
             distance(guide.origin, guide.tip) > 0.001
     }
 

@@ -108,6 +108,14 @@ class GuideStabilityGateTest {
         lock(gate, start = 400L)
     }
 
+    @Test fun extrapolatedTipOutsideRailDoesNotSuppressValidAim() {
+        val nearRail = frame(guide.copy(
+            origin = GuidePoint(875f, 300f),
+            tip = GuidePoint(925f, 300f)
+        ))
+        lock(GuideStabilityGate(), nearRail)
+    }
+
     @Test fun rejectsNonFiniteDegenerateAndOutOfBoundsGeometry() {
         val invalid = listOf(
             frame().copy(width = 0), frame().copy(height = -1),
@@ -120,8 +128,7 @@ class GuideStabilityGateTest {
             frame(guide.copy(ballRadius = 0f)), frame(guide.copy(ballRadius = -1f)),
             frame(guide.copy(ballRadius = Float.NaN)), frame(guide.copy(ballRadius = 500f)),
             // Capture coordinates are inside the ROI, but outside the ball-center inset.
-            frame(guide.copy(origin = GuidePoint(105f, 300f))),
-            frame(guide.copy(tip = GuidePoint(895f, 300f)))
+            frame(guide.copy(origin = GuidePoint(105f, 300f)))
         )
         for (bad in invalid) {
             val gate = GuideStabilityGate()

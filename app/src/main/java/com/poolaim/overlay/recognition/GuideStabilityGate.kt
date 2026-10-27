@@ -78,7 +78,11 @@ class GuideStabilityGate {
         if (left >= right || top >= bottom) return false
         fun inside(point: GuidePoint): Boolean = point.x.isFinite() && point.y.isFinite() &&
             point.x.toDouble() in left..right && point.y.toDouble() in top..bottom
-        return inside(guide.origin) && inside(guide.tip) &&
+        // The tip is an extrapolated direction marker (five ball radii),
+        // not a second ball centre. Near a cushion it can legitimately lie
+        // outside the table; the trajectory calculator clips the visible ray.
+        return inside(guide.origin) &&
+            guide.tip.x.isFinite() && guide.tip.y.isFinite() &&
             distance(guide.origin, guide.tip) > 0.001
     }
 

@@ -1,0 +1,42 @@
+name: Tribez Java integrity-call investigation
+on:
+  push:
+    branches: [tribez-java-analysis-20261101]
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Obtain original APK
+        run: |
+          curl -fL --retry 3 --max-time 220 -o tribez.xapk 'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest'
+          unzip -p tribez.xapk com.gameinsight.tribez.apk > base.apk
+          unzip -tqq base.apk
+      - name: Install JADX
+        run: |
+          curl -fL --retry 3 --max-time 120 -o jadx.zip 'https://github.com/skylot/jadx/releases/download/v1.5.6/jadx-1.5.6.zip'
+          unzip -q jadx.zip -d jadx-tool
+          chmod +x jadx-tool/bin/jadx
+      - name: Decompile app Java code
+        run: |
+          mkdir -p tribez-jadx
+          jadx-tool/bin/jadx --no-res -j 4 -d tribez-jadx base.apk > jadx_stdout.log 2>&1 || true
+          du -sh tribez-jadx
+      - name: Locate integrity verification and error caller
+        run: python3 tools/tribez_java_inspect.py
+      - name: Upload analysis logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-decompile-diagnostic
+          path: jadx_stdout.log
+          retention-days: 3

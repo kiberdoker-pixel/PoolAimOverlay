@@ -3,6 +3,7 @@
 import os, sys, subprocess, time, json, zipfile, shutil, struct
 from pathlib import Path
 
+os.environ["PATH"]=os.path.join(os.environ.get("ANDROID_HOME","/usr/local/lib/android/sdk"),"build-tools","35.0.0")+os.pathsep+os.environ.get("PATH","")
 OUT=Path("tribez-variants")
 OUT.mkdir(exist_ok=True)
 def run(*args,timeout=120,check=False):

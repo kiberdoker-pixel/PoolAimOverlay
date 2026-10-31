@@ -1,0 +1,40 @@
+name: Tribez original APK Android smoke test (isolated)
+on:
+  push:
+    branches: [tribez-diagnostic-20261101]
+  workflow_dispatch:
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Get public original XAPK (no user secrets)
+        run: |
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 \
+            -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0' \
+            -o tribez-download.xapk 'https://d.apkpure.com/b/XAPK/com.gameinsight.tribez?version=latest'
+          file tribez-download.xapk
+          ls -lh tribez-download.xapk
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm
+      - name: Install, launch and capture native logs
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/tribez_smoke.py
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-original-diagnostics
+          path: tribez-diagnostics/
+          retention-days: 3
+          if-no-files-found: warn

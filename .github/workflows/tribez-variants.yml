@@ -1,0 +1,51 @@
+name: Tribez signature-control experiment
+on:
+  push:
+    branches: [tribez-signature-test-20261101]
+  workflow_dispatch:
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Install APK signing tools
+        run: sdkmanager 'build-tools;35.0.0'
+      - name: Fetch original APK bundle
+        run: |
+          curl --fail --location --retry 2 --connect-timeout 20 --max-time 180 \
+            -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0' \
+            -o tribez-download.xapk 'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest'
+          unzip -tqq tribez-download.xapk
+      - name: Enable virtualization
+        run: sudo chmod 666 /dev/kvm
+      - name: Compare installed original, new signature and native fix
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/tribez_variant_smoke.py
+      - name: Upload screenshots and logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-signature-comparison
+          path: tribez-variants/*_screen.png
+          if-no-files-found: warn
+      - name: Upload diagnostic files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-signature-logcat
+          path: |
+            tribez-variants/SUMMARY.json
+            tribez-variants/*_ui.xml
+            tribez-variants/*_install.txt
+            tribez-variants/*_crashes.txt
+          if-no-files-found: warn

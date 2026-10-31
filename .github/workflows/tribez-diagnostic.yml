@@ -14,11 +14,25 @@ jobs:
       - uses: android-actions/setup-android@v4
       - name: Get public original XAPK (no user secrets)
         run: |
-          curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 \
-            -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0' \
-            -o tribez-download.xapk 'https://d.apkpure.com/b/XAPK/com.gameinsight.tribez?version=latest'
-          file tribez-download.xapk
-          ls -lh tribez-download.xapk
+          set +e
+          for url in \
+            'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest' \
+            'https://d.apkpure.com/b/APK/com.gameinsight.tribez?version=latest' \
+            'https://the-tribez.en.uptodown.com/android/download'
+          do
+            echo "Trying public source: $url"
+            curl --fail --location --connect-timeout 10 --max-time 100 \
+              -A 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0' \
+              -o tribez-download.xapk "$url"
+            result=$?
+            file tribez-download.xapk 2>/dev/null
+            if [ $result -eq 0 ] && unzip -tqq tribez-download.xapk >/dev/null 2>&1; then
+              echo "Download ZIP/XAPK succeeded"
+              exit 0
+            fi
+          done
+          echo 'None of the public sources provided an installable archive'
+          exit 1
       - name: Enable KVM
         run: sudo chmod 666 /dev/kvm
       - name: Install, launch and capture native logs

@@ -30,3 +30,13 @@ for p in root.rglob("GameCoreActivity.java"):
    print("\\n---line",i+1,"---")
    for j in range(max(0,i-8),min(len(lines),i+17)):
     print(f"{j+1:04d}: {lines[j][:300]}")
+
+for p in root.rglob("GameCoreActivity.java"):
+ lines=p.read_text(errors="replace").splitlines()
+ print("\\n===== GAMECORE SIGNATURE CHECK FIELD SETTERS =====")
+ for i,line in enumerate(lines):
+  if (i<185 or any(t in line for t in ["this.o =", "this.o=", " s =", " s=", "o = ", "static boolean s", " boolean o", " s;", "o;", "this.o)"," s)","s = "] )):
+   print(f"{i+1:04d}: {line[:500]}")
+ print("\\n===== GAMECORE FULL onCreate =====")
+ for i in range(895,min(1015,len(lines))):
+  print(f"{i+1:04d}: {lines[i][:500]}")

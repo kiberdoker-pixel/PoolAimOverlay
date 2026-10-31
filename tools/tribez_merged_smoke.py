@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Verify single APK merged from Tribez XAPK in Android 11, then test signature patch."""
 import zipfile, subprocess, os, time, pathlib, json, struct, sys
+os.environ["PATH"]=os.path.join(os.environ.get("ANDROID_HOME","/usr/local/lib/android/sdk"),"build-tools","35.0.0")+os.pathsep+os.environ.get("PATH","")
 D=pathlib.Path("tribez-merged-diagnostics")
 D.mkdir(exist_ok=True)
 def run(args,timeout=120):

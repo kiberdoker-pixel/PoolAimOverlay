@@ -21,3 +21,12 @@ for path,s in names:
             if any(y in l for y in ["void c0(", " ApkCheckFail", "void onCreate(", "String getSignature"]):
                 print("ACTIVITY EXTRA line",i+1,l[:350])
 print("DONE")
+
+for p in root.rglob("GameCoreActivity.java"):
+ print("\\n===== GAMECORE ACTIVITY FULL INTERESTING LINES =====")
+ lines=p.read_text(errors="replace").splitlines()
+ for i,line in enumerate(lines):
+  if any(t in line for t in ["c0()", " c0(", "getSignature", "Signature", "native ", "getPackageInfo", "getInstaller", "onCreate", "onResume", "PackageManager", "getPackageName", "Integrity", "validate", "validateApk"]):
+   print("\\n---line",i+1,"---")
+   for j in range(max(0,i-8),min(len(lines),i+17)):
+    print(f"{j+1:04d}: {lines[j][:300]}")

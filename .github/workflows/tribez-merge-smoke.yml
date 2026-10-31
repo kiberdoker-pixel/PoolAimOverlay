@@ -1,0 +1,53 @@
+name: Tribez correctly merged standalone APK emulator test
+on:
+  push:
+    branches: [tribez-merge-smoke-20261101]
+  workflow_dispatch:
+jobs:
+  merge-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Download original XAPK and APKEditor from their publishers
+        run: |
+          curl -fL --retry 2 --connect-timeout 20 --max-time 210 -o tribez-download.xapk \
+            'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest'
+          unzip -tqq tribez-download.xapk
+          curl -fL --retry 2 --connect-timeout 20 --max-time 120 -o APKEditor.jar \
+            'https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar'
+          ls -lh APKEditor.jar tribez-download.xapk
+      - name: Merge all split resources into one base APK
+        run: |
+          java -Xmx4g -jar APKEditor.jar m -i tribez-download.xapk \
+            -o tribez-merged-unsigned.apk -extractNativeLibs false -clean-meta
+          unzip -tqq tribez-merged-unsigned.apk
+          ls -lh tribez-merged-unsigned.apk
+      - name: Install signing tools
+        run: sdkmanager 'build-tools;35.0.0'
+      - name: Enable Android hardware acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Test merged and merged-signature-patched variants
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/tribez_merged_smoke.py
+      - name: Upload logs and screenshots only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-merge-test-diagnostics
+          path: |
+            tribez-merged-diagnostics/SUMMARY.json
+            tribez-merged-diagnostics/*_screen.png
+            tribez-merged-diagnostics/*_ui.xml
+            tribez-merged-diagnostics/*_install.txt
+          retention-days: 3
+          if-no-files-found: warn

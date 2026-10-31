@@ -29,7 +29,7 @@ jobs:
       - name: Decompile app Java code
         run: |
           mkdir -p tribez-jadx
-          jadx-tool/bin/jadx --no-res -j 4 --single-class com.divogames.javaengine.GameCoreActivity -d tribez-jadx base.apk > jadx_stdout.log 2>&1 || true
+          jadx-tool/bin/jadx --no-res -j 4 --single-class com.gameinsight.tribez.TheTribezActivity -d tribez-jadx base.apk > jadx_stdout.log 2>&1 || true
           du -sh tribez-jadx
           find tribez-jadx -type f | head -15
       - name: Locate integrity verification and error caller

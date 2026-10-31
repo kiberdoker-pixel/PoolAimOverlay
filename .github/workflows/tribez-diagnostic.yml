@@ -38,7 +38,7 @@ jobs:
       - name: Install, launch and capture native logs
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 30
           arch: x86_64
           target: google_apis
           disable-animations: true

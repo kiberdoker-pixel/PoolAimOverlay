@@ -40,3 +40,13 @@ for p in root.rglob("GameCoreActivity.java"):
  print("\\n===== GAMECORE FULL onCreate =====")
  for i in range(895,min(1015,len(lines))):
   print(f"{i+1:04d}: {lines[i][:500]}")
+
+for p in root.rglob("TheTribezActivity.java"):
+ lines=p.read_text(errors="replace").splitlines()
+ print("\\n===== THE TRIBEZ ACTIVITY INIT GUARD =====")
+ for i,line in enumerate(lines):
+  if any(t in line for t in ["GameCoreActivity.s", "GameCoreActivity.q", "GameCoreActivity.r", "this.o =", "super.onCreate", "onCreate(Bundle", "static {", " getSignature", "Integrity", "isValid", "signature"]):
+   for j in range(max(0,i-7),min(len(lines),i+14)):
+    print(f"{j+1:04d}: {lines[j][:450]}")
+ print("\\n=== INIT onCreate whole ===")
+ for i in range(1120,min(1265,len(lines))):print(f"{i+1:04d}: {lines[i][:450]}")

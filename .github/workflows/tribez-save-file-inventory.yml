@@ -1,0 +1,36 @@
+name: Tribez original save file location inventory
+on:
+  push:
+    branches: [tribez-save-files-20261101]
+  workflow_dispatch:
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Download original APK
+        run: |
+          curl -fL --retry 2 --max-time 200 -o tribez.xapk 'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest'
+          unzip -tqq tribez.xapk
+      - run: sudo chmod 666 /dev/kvm
+      - name: Inspect local data file names on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/tribez_file_inventory.py
+      - name: Save inspection report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-save-file-inventory
+          path: storage-report/file_report.json
+          retention-days: 3
+          if-no-files-found: warn

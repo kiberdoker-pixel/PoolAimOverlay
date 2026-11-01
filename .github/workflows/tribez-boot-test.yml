@@ -1,0 +1,48 @@
+name: Tribez repaired DEX Android 11 real boot
+on:
+  push:
+    branches: [tribez-apk-boot-test-20261101]
+  workflow_dispatch:
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 38
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Download original splits and merger
+        run: |
+          curl -fL --retry 3 --max-time 215 -o tribez-download.xapk 'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest'
+          unzip -tqq tribez-download.xapk
+          curl -fL --retry 3 --max-time 130 -o APKEditor.jar 'https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar'
+          sdkmanager 'build-tools;35.0.0'
+      - name: Merge clean original game and apply tiny Java variant
+        run: |
+          java -Xmx4g -jar APKEditor.jar m -i tribez-download.xapk -o tribez-merged-unsigned.apk -extractNativeLibs false -clean-meta
+          python3 tools/tribez_boot_test.py patch
+          ls -lh tribez-java-variant-unsigned.apk
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - name: Sign and boot game on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/tribez_boot_test.py
+      - name: Save diagnostics (no third-party APK binary)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-boot-results
+          path: |
+            tribez-boot-results/result.json
+            tribez-boot-results/ui.xml
+            tribez-boot-results/screen.png
+            tribez-boot-results/install.txt
+          if-no-files-found: warn
+          retention-days: 3

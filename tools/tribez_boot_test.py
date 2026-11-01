@@ -49,7 +49,11 @@ def test():
  if install.returncode:
   print("RESULT",json.dumps(dict(installed=False,reason=install.stderr)),flush=True);return
  run("adb","shell","monkey","-p","com.gameinsight.tribez","-c","android.intent.category.LAUNCHER","1")
- time.sleep(58)
+ time.sleep(150)
+ early=subprocess.run(["adb","exec-out","screencap","-p"],capture_output=True,timeout=40)
+ (D/"screen_after_150s.png").write_bytes(early.stdout)
+ print("AFTER 150 SECONDS",len(early.stdout),flush=True)
+ time.sleep(55)
  pid=run("adb","shell","pidof","com.gameinsight.tribez").stdout.strip()
  ui_dump=run("adb","shell","uiautomator","dump","/sdcard/boot-view.xml",timeout=50)
  ui=run("adb","shell","cat","/sdcard/boot-view.xml",timeout=40).stdout

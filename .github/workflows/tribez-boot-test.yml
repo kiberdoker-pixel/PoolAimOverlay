@@ -43,6 +43,7 @@ jobs:
             tribez-boot-results/result.json
             tribez-boot-results/ui.xml
             tribez-boot-results/screen.png
+            tribez-boot-results/screen_after_150s.png
             tribez-boot-results/install.txt
           if-no-files-found: warn
           retention-days: 3

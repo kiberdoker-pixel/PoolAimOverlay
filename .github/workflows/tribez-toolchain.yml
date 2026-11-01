@@ -1,0 +1,30 @@
+name: Tribez test toolchain
+on:
+  push:
+    paths:
+      - .github/workflows/tribez-toolchain.yml
+    branches: [tribez-diagnostic-20261101]
+  workflow_dispatch:
+jobs:
+  tools:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Download Android APK tooling
+        run: |
+          sdkmanager 'build-tools;35.0.0'
+          mkdir -p tools-dist
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" tools-dist/
+          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" tools-dist/
+          curl -fL --retry 3 --max-time 150 -o tools-dist/APKEditor.jar 'https://github.com/REAndroid/APKEditor/releases/download/V1.4.9/APKEditor-1.4.9.jar'
+          sha256sum tools-dist/*
+          ls -lah tools-dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tribez-android-build-tools
+          path: tools-dist/
+          retention-days: 2

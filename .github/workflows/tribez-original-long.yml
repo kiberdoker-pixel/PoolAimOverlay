@@ -1,0 +1,38 @@
+name: Tribez untouched original extended Android stability test
+on:
+  push:
+    branches: [tribez-original-long-test-20261101]
+  workflow_dispatch:
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v4
+      - name: Download pristine original game
+        run: |
+          curl -fL --retry 3 --max-time 200 -o tribez-download.xapk 'https://d.apkpure.net/b/XAPK/com.gameinsight.tribez?version=latest'
+          unzip -tqq tribez-download.xapk
+      - run: sudo chmod 666 /dev/kvm
+      - name: Compare 65s, 100s, 155s, 205s original game
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: python3 tools/tribez_original_long.py
+      - name: Save original baseline data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tribez-original-long-baseline
+          path: |
+            tribez-original-long-results/results.json
+            tribez-original-long-results/original_*.png
+          retention-days: 3
+          if-no-files-found: warn

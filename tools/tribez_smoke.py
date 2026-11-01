@@ -47,4 +47,7 @@ for line in r.stdout.splitlines():
     if any(s in line.lower() for s in ["fatal exception","apkcheckfail","gameinsight.tribez","unsatisfiedlinkerror","force finishing","signal 11"]):
         print(line[-600:])
 print("RESULT:", "STARTED (process alive)" if pid.stdout.strip() else "NOT RUNNING")
+for directory in ["/sdcard/Android/data/com.gameinsight.tribez/files", "/sdcard/Android/obb/com.gameinsight.tribez"]:
+    listing=run("adb","shell","ls","-la",directory,check=False)
+    print("PUBLIC_APP_FILES",directory,listing.stdout[-2000:])
 sys.exit(0 if pid.stdout.strip() else 3)

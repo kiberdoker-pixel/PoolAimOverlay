@@ -50,3 +50,9 @@ for p in root.rglob("TheTribezActivity.java"):
     print(f"{j+1:04d}: {lines[j][:450]}")
  print("\\n=== INIT onCreate whole ===")
  for i in range(1120,min(1265,len(lines))):print(f"{i+1:04d}: {lines[i][:450]}")
+
+for p in root.rglob("b.java"):
+ if "com/gameinsight/tribez/" not in str(p).replace("\\","/"): continue
+ print("===== GAME PACKAGE VALIDATION CLASS =====")
+ for i,line in enumerate(p.read_text(errors="replace").splitlines()):
+  print(f"{i+1:04d}: {line[:500]}")
